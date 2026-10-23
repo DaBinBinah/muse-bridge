@@ -24,6 +24,7 @@
 
 ## 📖 目录 / Contents
 
+- [界面截图 / Screenshot](#界面截图--screenshot)
 - [简体中文](#简体中文)
   - [项目简介](#项目简介)
   - [功能特性](#功能特性)
@@ -39,6 +40,19 @@
   - [Getting Started](#getting-started)
   - [Security](#security)
   - [Disclaimer](#disclaimer)
+
+---
+
+## 界面截图 / Screenshot
+
+<p align="center">
+  <img src="docs/screenshot.png" width="860" alt="MuseBridge 界面截图：CC Switch 自定义供应商、Codex CLI 对话效果与 Web 管理面板">
+</p>
+
+<p align="center">
+  CC Switch 中配置 MuseBridge 供应商 · Codex CLI 通过代理对话 · MuseBridge Web 管理面板<br>
+  MuseBridge provider in CC Switch · Codex CLI chatting through the proxy · the MuseBridge web dashboard
+</p>
 
 ---
 
