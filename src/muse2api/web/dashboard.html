@@ -786,6 +786,7 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
         ${state.capabilities.renew_session ? `<button class="btn sm" type="button" data-act="renew">续期</button>` : ""}
         <button class="btn sm" type="button" data-act="reset" ${s.key === "active" && !a.last_error ? "disabled" : ""} title="清除冷却与错误，恢复为运行状态">重置</button>
         <button class="btn sm ghost" type="button" data-act="requests">请求</button>
+        <button class="btn sm" type="button" data-act="edit">编辑</button>
         <span class="spacer"></span>
         <button class="btn sm danger" type="button" data-act="delete">删除</button>
       </div>
@@ -833,6 +834,22 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
         if (!await confirmBox("删除账号？", `<p>将把 <b>${esc(name)}</b>（<span class="mono">${esc(id)}</span>）从账号池中永久删除，包括已保存的 cookies。请求历史仍会保留。</p>`, "删除账号")) return;
         await api(path, {method: "DELETE"});
         toast("已删除账号");
+      } else if (act === "edit") {
+        if (!a) return;
+        const f = await accountForm(a);
+        if (!f) return;
+        const body = {};
+        if (f.label !== (a.label || "")) body.label = f.label;
+        const cookies = cookiesFromForm(f);
+        if (cookies) {
+          const missing = SESSION_COOKIES.filter((n) => !cookies[n]);
+          if (missing.length && !await confirmBox("Cookie 不完整",
+              `<p>保存后将<b>替换</b>全部已存 Cookie，且缺少 ${missing.map(esc).join("、")}，该账号大概率无法工作。确定保存？</p>`, "仍然保存")) return;
+          body.cookies = cookies;
+        }
+        if (!Object.keys(body).length) { toast("没有修改"); return; }
+        await api(path, {method: "PATCH", body});
+        toast(body.cookies ? "已更新账号与 Cookie" : "已更新账号");
       } else {
         btn.disabled = true;
         try {
@@ -846,23 +863,52 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
   });
   $("#acc-refresh").addEventListener("click", () => guarded(loadAccountsPage));
 
-  function accountForm() {
+  const SESSION_COOKIES = ["hatch_sess", "hatch_gw", "hatch_vml", "hatch_native_auth_device"];
+
+  function parseCookieString(raw) {
+    const out = {};
+    for (const part of raw.split(";")) {
+      const i = part.indexOf("=");
+      if (i < 1) continue;
+      const name = part.slice(0, i).trim();
+      if (name) out[name] = part.slice(i + 1).trim();
+    }
+    return out;
+  }
+
+  // Cookie dict from the form values; a pasted whole-header wins. Null when nothing was typed.
+  function cookiesFromForm(f) {
+    if (f.raw) return parseCookieString(f.raw);
+    const dict = {};
+    for (const [name, v] of [["hatch_sess", f.sess], ["hatch_gw", f.gw],
+                             ["hatch_vml", f.vml], ["hatch_native_auth_device", f.native]])
+      if (v) dict[name] = v;
+    return Object.keys(dict).length ? dict : null;
+  }
+
+  // Shared by "add account" and "edit account"; passing an account switches to edit mode.
+  // Cookies never echo back (the server masks them), so in edit mode empty means "keep".
+  function accountForm(a = null) {
+    const editing = !!a;
     return modal({
-      title: "添加账号",
-      body: `<p class="muted" style="margin:0">在已登录 muse.ai 的浏览器中打开开发者工具 → 应用（Application）→ Cookies → muse.ai，复制下面几项的值。</p>
-        <label class="f">备注 <span class="hint">选填——例如 acc1、主力号</span><input type="text" id="af-label" maxlength="100" autocomplete="off"></label>
+      title: editing ? `编辑账号 ${a.label || a.id}` : "添加账号",
+      body: `${editing
+          ? `<p class="muted" style="margin:0">Cookie 值不会回显。留空表示保持不变；填写任意一项将<b>替换全部</b>已保存的 Cookie。</p>`
+          : `<p class="muted" style="margin:0">在已登录 muse.ai 的浏览器中打开开发者工具 → 应用（Application）→ Cookies → muse.ai，复制下面几项的值。</p>`}
+        <label class="f">备注 <span class="hint">选填——例如 acc1、主力号</span><input type="text" id="af-label" maxlength="100" autocomplete="off" value="${editing ? esc(a.label || "") : ""}"></label>
         <label class="f">hatch_sess <span class="hint">会话凭证（最重要，通常是 HttpOnly）</span><textarea id="af-sess" rows="2" spellcheck="false" autocomplete="off"></textarea></label>
         <label class="f">hatch_gw <span class="hint">网关标识</span><textarea id="af-gw" rows="2" spellcheck="false" autocomplete="off"></textarea></label>
         <label class="f">hatch_vml <span class="hint">VM 标识</span><textarea id="af-vml" rows="2" spellcheck="false" autocomplete="off"></textarea></label>
         <label class="f">hatch_native_auth_device <span class="hint">设备认证</span><textarea id="af-native" rows="2" spellcheck="false" autocomplete="off"></textarea></label>
-        <label class="f">整段粘贴 <span class="hint">选填——也可直接粘贴完整 Cookie 请求头，填了此项将优先使用</span><textarea id="af-raw" rows="2" spellcheck="false" autocomplete="off" placeholder="hatch_sess=...; hatch_gw=...; hatch_vml=...; hatch_native_auth_device=..."></textarea></label>`,
+        <label class="f">整段粘贴 <span class="hint">选填——${editing ? "解析后将替换全部已存 Cookie" : "也可直接粘贴完整 Cookie 请求头，填了此项将优先使用"}</span><textarea id="af-raw" rows="2" spellcheck="false" autocomplete="off" placeholder="hatch_sess=...; hatch_gw=...; hatch_vml=...; hatch_native_auth_device=..."></textarea></label>`,
       actions: [{label: "取消", value: null},
-        {label: "添加账号", primary: true, cls: "primary",
+        {label: editing ? "保存修改" : "添加账号", primary: true, cls: "primary",
          collect: () => ({label: $("#af-label").value.trim(),
            sess: $("#af-sess").value.trim(), gw: $("#af-gw").value.trim(),
            vml: $("#af-vml").value.trim(), native: $("#af-native").value.trim(),
            raw: $("#af-raw").value.trim()}),
-         check: (v) => (v.raw || v.sess || v.gw || v.vml || v.native) ? "" : "请填写至少一个 Cookie，或整段粘贴。"}],
+         check: editing ? null
+           : (v) => (v.raw || v.sess || v.gw || v.vml || v.native) ? "" : "请填写至少一个 Cookie，或整段粘贴。"}],
     });
   }
 
@@ -871,12 +917,7 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
     if (!f) return;
     const body = {label: f.label};
     if (f.raw) body.cookies = f.raw;
-    else {
-      body.cookies = {};
-      for (const [name, v] of [["hatch_sess", f.sess], ["hatch_gw", f.gw],
-                                ["hatch_vml", f.vml], ["hatch_native_auth_device", f.native]])
-        if (v) body.cookies[name] = v;
-    }
+    else body.cookies = cookiesFromForm(f);
     const res = await api("/admin/accounts", {method: "POST", body});
     await loadAccountsPage();
     const missing = res.missing_cookies || [];
