@@ -270,6 +270,7 @@ tr.builtin td:first-child b { font-family: var(--mono); font-size: 12.5px; }
 label.f { display: flex; flex-direction: column; gap: 5px; font-size: 12.5px; color: var(--muted); font-weight: 550; }
 label.f input, label.f textarea { color: var(--text); font-size: 14px; font-weight: 400; padding: 7px 10px; }
 label.f .hint { font-weight: 400; color: var(--faint); font-size: 12px; }
+label.f textarea { color: var(--text); font-family: var(--mono); font-size: 12.5px; word-break: break-all; resize: vertical; }
 .ferr { color: var(--err); font-size: 12.5px; }
 .secret { display: flex; gap: 8px; }
 .secret input { flex: 1; font-family: var(--mono); font-size: 13px; background: var(--panel-2); }
@@ -437,7 +438,10 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
       <section class="page" id="page-accounts" hidden>
         <div class="page-head">
           <div class="grow"><h1>账号</h1><div class="sub">账号池中的 muse.ai 账号。配额用尽的账号会在冷却结束后自动恢复。</div></div>
-          <div class="tools"><button class="btn" id="acc-refresh" type="button"><svg class="i"><use href="#i-refresh"/></svg>刷新</button></div>
+          <div class="tools">
+            <button class="btn primary big" id="acc-new" type="button"><svg class="i"><use href="#i-plus"/></svg>添加账号</button>
+            <button class="btn" id="acc-refresh" type="button"><svg class="i"><use href="#i-refresh"/></svg>刷新</button>
+          </div>
         </div>
         <div class="summary" id="acc-summary"></div>
         <div class="cards" id="accounts"></div>
@@ -801,7 +805,7 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
     const list = [...state.accounts].sort((a, b) => (order[accState(a, t).key] - order[accState(b, t).key])
       || (a.label || a.id).localeCompare(b.label || b.id));
     $("#accounts").innerHTML = list.map(accountCard).join("")
-      || `<div class="panel empty">尚无账号。可通过 <span class="mono">POST /admin/accounts</span> 或 Cookie 导入脚本添加账号。</div>`;
+      || `<div class="panel empty">尚无账号。点击右上角「添加账号」，粘贴 muse.ai 的会话 Cookie 即可。</div>`;
   }
   async function loadAccountsPage() { await loadAccounts(); renderAccounts(); }
 
@@ -841,6 +845,49 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
     });
   });
   $("#acc-refresh").addEventListener("click", () => guarded(loadAccountsPage));
+
+  function accountForm() {
+    return modal({
+      title: "添加账号",
+      body: `<p class="muted" style="margin:0">在已登录 muse.ai 的浏览器中打开开发者工具 → 应用（Application）→ Cookies → muse.ai，复制下面几项的值。</p>
+        <label class="f">备注 <span class="hint">选填——例如 acc1、主力号</span><input type="text" id="af-label" maxlength="100" autocomplete="off"></label>
+        <label class="f">hatch_sess <span class="hint">会话凭证（最重要，通常是 HttpOnly）</span><textarea id="af-sess" rows="2" spellcheck="false" autocomplete="off"></textarea></label>
+        <label class="f">hatch_gw <span class="hint">网关标识</span><textarea id="af-gw" rows="2" spellcheck="false" autocomplete="off"></textarea></label>
+        <label class="f">hatch_vml <span class="hint">VM 标识</span><textarea id="af-vml" rows="2" spellcheck="false" autocomplete="off"></textarea></label>
+        <label class="f">hatch_native_auth_device <span class="hint">设备认证</span><textarea id="af-native" rows="2" spellcheck="false" autocomplete="off"></textarea></label>
+        <label class="f">整段粘贴 <span class="hint">选填——也可直接粘贴完整 Cookie 请求头，填了此项将优先使用</span><textarea id="af-raw" rows="2" spellcheck="false" autocomplete="off" placeholder="hatch_sess=...; hatch_gw=...; hatch_vml=...; hatch_native_auth_device=..."></textarea></label>`,
+      actions: [{label: "取消", value: null},
+        {label: "添加账号", primary: true, cls: "primary",
+         collect: () => ({label: $("#af-label").value.trim(),
+           sess: $("#af-sess").value.trim(), gw: $("#af-gw").value.trim(),
+           vml: $("#af-vml").value.trim(), native: $("#af-native").value.trim(),
+           raw: $("#af-raw").value.trim()}),
+         check: (v) => (v.raw || v.sess || v.gw || v.vml || v.native) ? "" : "请填写至少一个 Cookie，或整段粘贴。"}],
+    });
+  }
+
+  $("#acc-new").addEventListener("click", () => guarded(async () => {
+    const f = await accountForm();
+    if (!f) return;
+    const body = {label: f.label};
+    if (f.raw) body.cookies = f.raw;
+    else {
+      body.cookies = {};
+      for (const [name, v] of [["hatch_sess", f.sess], ["hatch_gw", f.gw],
+                                ["hatch_vml", f.vml], ["hatch_native_auth_device", f.native]])
+        if (v) body.cookies[name] = v;
+    }
+    const res = await api("/admin/accounts", {method: "POST", body});
+    await loadAccountsPage();
+    const missing = res.missing_cookies || [];
+    if (missing.length) {
+      await modal({
+        title: "账号已添加，但 Cookie 不完整",
+        body: `<div class="warnbox">缺少 <b>${missing.map(esc).join("、")}</b>，该账号大概率无法调用 muse.ai。建议删除这个账号，补全后重新添加。</div>`,
+        actions: [{label: "知道了", value: null, primary: true, cls: ""}],
+      });
+    } else toast("已添加账号");
+  }));
 
   // ---- overview ----
   function tile(k, v, s = "", cls = "") {

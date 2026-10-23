@@ -27,7 +27,7 @@ Priorities: **P0** must be done first · **P1** core feature · **P2** better ex
 | C4 | Streaming heartbeats to avoid client timeouts | P2 | `api/routes/chat.py` | | Done |
 | D1 | Support more cookie import formats | P1 | `api/routes/admin.py` | | Done |
 | D2 | Cookie import browser extension | P2 | `extension/` (new) | | Not started |
-| D3 | Web admin console | P2 | `web/` (new) | | Not started |
+| D3 | Web admin console | P2 | `src/muse2api/web/` | | Partial (dashboard with overview, accounts incl. cookie-import form, keys, requests done; task list, media library, API tester open) |
 | D4 | SQLite / Redis storage backends | P3 | `accounts/store.py` | | Not started |
 | E1 | Automatic media cleanup | P2 | `core/media.py` | | Done |
 | E2 | Multiple API keys and rate limiting | P3 | `api/deps.py` | | Partial (per-key management done; rate limiting open) |
@@ -141,6 +141,7 @@ Done. A follow-up whose `messages` continue the conversation already on the page
 - Create a `web/` directory, built on the existing `/admin/*` endpoints.
 - Features: service status, account list (state / cooldown / errors / quota), importing and editing accounts, task list, media library, and an interactive API tester.
 - Any tech stack is fine. Prefer a build output that FastAPI can serve as static files, so deployment gains no extra steps.
+- **Partially done (2026-10-23)**: a built-in dashboard is served at `/dashboard` from `src/muse2api/web/dashboard.html`, covering overview, accounts (including an add-account form for the four session cookies and whole-cookie-header paste), API keys, and the request log. Task list, media library, and the API tester remain open.
 
 ### D4 SQLite / Redis storage backends · P3
 - Implement the `AccountStore` protocol in `accounts/store.py`, selectable through configuration.
