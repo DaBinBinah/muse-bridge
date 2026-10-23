@@ -836,15 +836,32 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
         toast("已删除账号");
       } else if (act === "edit") {
         if (!a) return;
-        const f = await accountForm(a);
+        editSnapshot = (await api(`${path}/cookies`)).cookies || {};
+        const f = await accountForm(a, editSnapshot);
         if (!f) return;
         const body = {};
         if (f.label !== (a.label || "")) body.label = f.label;
-        const cookies = cookiesFromForm(f);
+        let cookies = null;
+        if (f.raw) {
+          // Whole-header paste replaces everything, as before.
+          cookies = parseCookieString(f.raw);
+        } else {
+          // Merge the four session fields over the snapshot: typing updates,
+          // clearing deletes, everything else (extra cookies) is kept. Built in
+          // the snapshot's key order so an unchanged round trip is detected.
+          const fields = {hatch_sess: f.sess, hatch_gw: f.gw,
+                          hatch_vml: f.vml, hatch_native_auth_device: f.native};
+          const merged = {...editSnapshot};
+          for (const [k, v] of Object.entries(fields)) {
+            if (v) merged[k] = v;
+            else delete merged[k];
+          }
+          if (JSON.stringify(merged) !== JSON.stringify(editSnapshot)) cookies = merged;
+        }
         if (cookies) {
           const missing = SESSION_COOKIES.filter((n) => !cookies[n]);
           if (missing.length && !await confirmBox("Cookie 不完整",
-              `<p>保存后将<b>替换</b>全部已存 Cookie，且缺少 ${missing.map(esc).join("、")}，该账号大概率无法工作。确定保存？</p>`, "仍然保存")) return;
+              `<p>保存后将${f.raw ? "<b>替换全部</b>已存 Cookie，且" : ""}缺少 ${missing.map(esc).join("、")}，该账号大概率无法工作。确定保存？</p>`, "仍然保存")) return;
           body.cookies = cookies;
         }
         if (!Object.keys(body).length) { toast("没有修改"); return; }
@@ -886,24 +903,26 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
     return Object.keys(dict).length ? dict : null;
   }
 
-  // Shared by "add account" and "edit account"; passing an account switches to edit mode.
-  // Cookie values never echo in the fields (the server masks them); edit mode shows the
-  // masked value under each field and a button that loads the plaintext into the paste box.
-  function accountForm(a = null) {
+  // Plaintext cookies of the account being edited, fetched when its dialog opens.
+  // Edit mode prefills the fields from it and merges saves back onto it, so
+  // extra cookies (e.g. _ga) survive and "unchanged" round trips are detected.
+  let editSnapshot = null;
+
+  function accountForm(a = null, plain = null) {
     const editing = !!a;
-    const cur = (k) => (editing && a.cookies && a.cookies[k]) ? `<span class="hint">当前：${esc(a.cookies[k])}</span>` : "";
+    const val = (k) => esc((plain && plain[k]) || "");
     return modal({
       title: editing ? `编辑账号 ${a.label || a.id}` : "添加账号",
       body: `${editing
-          ? `<p class="muted" style="margin:0">出于安全，已保存的 Cookie 只显示掩码。留空表示保持不变；填写任意一项将<b>替换全部</b>已保存的 Cookie。</p>
-        <div class="row"><button class="btn sm" type="button" id="af-load" data-id="${esc(a.id)}">${icon("copy")}载入当前完整值</button><span class="muted" style="font-size:12px">填入下方「整段粘贴」框</span></div>`
+          ? `<p class="muted" style="margin:0">各字段已预填当前保存的 Cookie 明文：修改某项即更新，<b>清空某项即删除该 Cookie</b>；其他已存 Cookie（如 _ga）自动保留。在「整段粘贴」填写则整体替换。</p>
+        <div class="row"><button class="btn sm" type="button" id="af-load" data-id="${esc(a.id)}">${icon("copy")}载入完整值到粘贴框</button><span class="muted" style="font-size:12px">便于复制或整体替换</span></div>`
           : `<p class="muted" style="margin:0">在已登录 muse.ai 的浏览器中打开开发者工具 → 应用（Application）→ Cookies → muse.ai，复制下面几项的值。</p>`}
         <label class="f">备注 <span class="hint">选填——例如 acc1、主力号</span><input type="text" id="af-label" maxlength="100" autocomplete="off" value="${editing ? esc(a.label || "") : ""}"></label>
-        <label class="f">hatch_sess <span class="hint">会话凭证（最重要，通常是 HttpOnly）</span><textarea id="af-sess" rows="2" spellcheck="false" autocomplete="off"></textarea>${cur("hatch_sess")}</label>
-        <label class="f">hatch_gw <span class="hint">网关标识</span><textarea id="af-gw" rows="2" spellcheck="false" autocomplete="off"></textarea>${cur("hatch_gw")}</label>
-        <label class="f">hatch_vml <span class="hint">VM 标识</span><textarea id="af-vml" rows="2" spellcheck="false" autocomplete="off"></textarea>${cur("hatch_vml")}</label>
-        <label class="f">hatch_native_auth_device <span class="hint">设备认证</span><textarea id="af-native" rows="2" spellcheck="false" autocomplete="off"></textarea>${cur("hatch_native_auth_device")}</label>
-        <label class="f">整段粘贴 <span class="hint">选填——${editing ? "点击「载入当前完整值」回填；手动填写任一字段会清空此框" : "也可直接粘贴完整 Cookie 请求头，填了此项将优先使用"}</span><textarea id="af-raw" rows="2" spellcheck="false" autocomplete="off" placeholder="hatch_sess=...; hatch_gw=...; hatch_vml=...; hatch_native_auth_device=..."></textarea></label>`,
+        <label class="f">hatch_sess <span class="hint">会话凭证（最重要，通常是 HttpOnly）</span><textarea id="af-sess" rows="2" spellcheck="false" autocomplete="off">${val("hatch_sess")}</textarea></label>
+        <label class="f">hatch_gw <span class="hint">网关标识</span><textarea id="af-gw" rows="2" spellcheck="false" autocomplete="off">${val("hatch_gw")}</textarea></label>
+        <label class="f">hatch_vml <span class="hint">VM 标识</span><textarea id="af-vml" rows="2" spellcheck="false" autocomplete="off">${val("hatch_vml")}</textarea></label>
+        <label class="f">hatch_native_auth_device <span class="hint">设备认证</span><textarea id="af-native" rows="2" spellcheck="false" autocomplete="off">${val("hatch_native_auth_device")}</textarea></label>
+        <label class="f">整段粘贴 <span class="hint">选填——${editing ? "填写后将整体替换全部已存 Cookie" : "也可直接粘贴完整 Cookie 请求头，填了此项将优先使用"}</span><textarea id="af-raw" rows="2" spellcheck="false" autocomplete="off" placeholder="hatch_sess=...; hatch_gw=...; hatch_vml=...; hatch_native_auth_device=..."></textarea></label>`,
       actions: [{label: "取消", value: null},
         {label: editing ? "保存修改" : "添加账号", primary: true, cls: "primary",
          collect: () => ({label: $("#af-label").value.trim(),
@@ -916,6 +935,7 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
   }
 
   $("#acc-new").addEventListener("click", () => guarded(async () => {
+    editSnapshot = null;
     const f = await accountForm();
     if (!f) return;
     const body = {label: f.label};
