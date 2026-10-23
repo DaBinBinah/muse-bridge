@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 
 from . import __version__
 from .accounts.keepalive import keepalive_loop
@@ -78,6 +78,10 @@ def create_app(settings: Settings | None = None, driver: MuseDriver | None = Non
 
     app = FastAPI(title="MuseBridge", version=__version__, lifespan=lifespan)
     app.state.services = services
+
+    @app.get("/", include_in_schema=False)
+    async def root() -> RedirectResponse:
+        return RedirectResponse(url="/dashboard", status_code=307)
 
     @app.exception_handler(Muse2APIError)
     async def _muse_error(_: Request, exc: Muse2APIError) -> JSONResponse:

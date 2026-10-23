@@ -12,7 +12,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.10%2B-3478F6?logo=python&logoColor=white" alt="Python">
   <img src="https://img.shields.io/badge/License-MIT-3478F6" alt="License">
-  <img src="https://img.shields.io/badge/version-1.3.0-3478F6" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.3.1-3478F6" alt="Version">
   <img src="https://img.shields.io/badge/API-OpenAI%20Compatible-0F8B72" alt="OpenAI Compatible">
 </p>
 
@@ -114,11 +114,10 @@ MuseBridge 提供 Web 管理面板（默认 `http://127.0.0.1:18610/dashboard`�
 
 | 模块 | 说明 |
 |---|---|
-| 总览 | 查看请求量、错误率、响应延迟等统计信息 |
-| 账号管理 | 管理已配置的账号及相关状态 |
-| API 密钥 | 管理代理服务的访问密钥 |
+| 总览 | 请求量、错误率、响应延迟、按模型统计等 |
+| 账号 | 管理 muse.ai 账号（添加 / 编辑 Cookie、启用停用、续期） |
+| API 密钥 | 管理客户端调用密钥 |
 | 请求记录 | 查看已有请求日志 |
-| 模型统计 | 查看已有的模型使用统计数据 |
 
 管理面板的具体功能以当前版本为准。
 
@@ -133,7 +132,11 @@ cd muse-bridge
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e .
 
-cp .env.example .env      # 按需修改端口、密钥等配置
+cp .env.example .env
+# 编辑 .env，把 MUSE2API_DRIVER 改为 browser 以接入真实 muse.ai
+# （mock 为离线模式，无需 Chrome 与账号，返回固定假回复）
+sed -i '' 's/^MUSE2API_DRIVER=mock/MUSE2API_DRIVER=browser/' .env   # macOS
+# Linux: sed -i 's/^MUSE2API_DRIVER=mock/MUSE2API_DRIVER=browser/' .env
 python -m muse2api        # 默认监听 http://127.0.0.1:18610
 ```
 
@@ -241,7 +244,10 @@ cd muse-bridge
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e .
 
-cp .env.example .env      # adjust port, keys, etc. as needed
+cp .env.example .env
+# Edit .env and set MUSE2API_DRIVER=browser to talk to the real muse.ai
+# (mock is an offline mode: no Chrome or account needed, canned replies)
+sed -i 's/^MUSE2API_DRIVER=mock/MUSE2API_DRIVER=browser/' .env      # Linux (macOS: sed -i '')
 python -m muse2api        # listens on http://127.0.0.1:18610 by default
 ```
 

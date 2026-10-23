@@ -25,4 +25,6 @@ SingletonSocket
 SingletonCookie
 "Local State"
 Local State
+
+# CI workflow cannot be pushed until the token has the "workflow" scope
 .github/

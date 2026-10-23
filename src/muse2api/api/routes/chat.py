@@ -84,6 +84,7 @@ async def chat_completions(body: ChatCompletionRequest, request: Request,
         # ``first`` is the pre-fetched first delta when heartbeats are disabled;
         # when enabled it is None and the first token is awaited here, after the
         # 200 (headers) has already been committed to the client.
+        errored = False
         try:
             if first is None and svc.settings.stream_heartbeat_interval > 0:
                 # C4: some clients/proxies drop idle SSE connections while the
@@ -121,14 +122,19 @@ async def chat_completions(body: ChatCompletionRequest, request: Request,
                             "created": created, "model": model_name, "choices": [],
                             "usage": usage})
         except Muse2APIError as exc:
+            errored = True
             yield _sse(exc.to_body())
         except Exception:  # noqa: BLE001
+            errored = True
             log.exception("stream crashed")
             yield _sse({"error": {"message": "internal error", "type": "server_error"}})
         finally:
             cancel.set()
             await stream.aclose()
-        yield _sse("[DONE]")
+        # [DONE] marks a well-formed stream; after an error event some clients
+        # would treat it as a normal completion and ignore the error.
+        if not errored:
+            yield _sse("[DONE]")
 
     # With stream_heartbeat_interval set (C4), the 200 goes out immediately and
     # ': keepalive' SSE comments are sent while the first token is pending;

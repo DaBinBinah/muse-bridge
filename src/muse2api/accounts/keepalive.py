@@ -39,7 +39,11 @@ async def renew_account(pool: AccountPool, driver: MuseDriver, account_id: str) 
     acc.meta.update(info.meta)
     acc.meta["renewed_at"] = time.time()
     await pool.upsert(acc)
-    return {"ok": info.ok, "meta": info.meta}
+    if info.ok:
+        return {"ok": True, "meta": info.meta}
+    # The request succeeded but the session was not assigned; surface why.
+    return {"ok": False, "meta": info.meta,
+            "error": f"session status: {info.meta.get('session_status', 'unknown')}"}
 
 
 async def keepalive_loop(pool: AccountPool, driver: MuseDriver, interval: float) -> None:

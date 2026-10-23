@@ -76,7 +76,7 @@ class _Tab:
     image_count: int = 0
     thread_url: str = ""
     quota_note: str = ""
-    """Last ignored quota-hint snippet, so a page polled every 0.6s logs it once."""
+    """Last ignored quota-hint snippet, so rapid polling logs it once."""
     busy: bool = False
     stale: bool = False
     """Cookies were renewed; close this tab once it is idle."""

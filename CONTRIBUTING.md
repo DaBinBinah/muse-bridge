@@ -16,7 +16,7 @@ Available tasks are listed in [TODO.md](TODO.md). Before starting, open an issue
 
 ## Conventions
 
-- Dependency direction: `api → services → accounts/core → drivers → upstream`. Never import upward.
+- Dependency direction: `api → services → accounts/auth/core → drivers → upstream`. Never import upward.
 - Anything that depends on muse.ai's page structure belongs only in `drivers/browser/dom.py`; upstream URLs and cookie names belong only in `upstream/muse.py`.
 - When adding a driver capability, update `DriverCapabilities` and add a fake implementation to `MockDriver` so that tests never need network access.
 - Upstream errors must be mapped to the types in `errors.py`; never swallow exceptions inside a driver.

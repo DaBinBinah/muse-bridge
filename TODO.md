@@ -12,12 +12,12 @@ Priorities: **P0** must be done first · **P1** core feature · **P2** better ex
 
 | ID | Task | Priority | Location | Owner | Status |
 |---|---|---|---|---|---|
-| A1 | Install dependencies, get tests and lint passing | P0 | `tests/` | | Done (local; CI runs on push) |
+| A1 | Install dependencies, get tests and lint passing | P0 | `tests/` | | Done (local; CI blocked, see A6) |
 | A2 | Test the browser driver with real accounts | P0 | `drivers/browser/` | | Not started |
 | A3 | Verify how image/video generation is triggered | P0 | `drivers/browser/driver.py` | | Not started |
 | A4 | Verify session renewal | P0 | `upstream/muse.py` | | Not started |
 | A5 | Verify the Docker image builds and runs | P1 | `Dockerfile` | | Not started |
-| A6 | Enable GitHub Actions CI | P1 | `.github/workflows/ci.yml` | | Done (workflow file in main) |
+| A6 | Enable GitHub Actions CI | P1 | `.github/workflows/ci.yml` | | Blocked (push rejected: token lacks `workflow` scope) |
 | B1 | Direct HTTP protocol driver | P1 | `drivers/http/` | | Not started |
 | B2 | Reuse conversation threads to cut first-token latency | P2 | `drivers/browser/` | | Done |
 | B3 | Quota lookup | P2 | `MuseDriver.quota` | | Partial (mock done; real-driver lookup open) |
@@ -73,8 +73,8 @@ All v0.1 code is written but has never been run. This group must be done first; 
 - Check whether Chromium's sandbox flags need adjusting when the container runs as a non-root user.
 
 ### A6 Enable GitHub Actions CI · P1
-- The repository already contains `.github/workflows/ci.yml` (lint and tests on Python 3.10 / 3.12).
-- Pushing this file with a token requires the `workflow` scope; pushing over SSH does not.
+- The repository already contains `.github/workflows/ci.yml` (lint and tests on Python 3.10 / 3.12), but it is **not on GitHub**: pushing a workflow file requires a token with the `workflow` scope, and the current one does not have it (push rejected 2026-10-24).
+- Fix: `gh auth refresh -s workflow` (or push over SSH), remove the `.github/` rule from `.gitignore`, then commit and push the workflow file.
 - **Done when**: PRs run CI automatically and show the result.
 
 ---
