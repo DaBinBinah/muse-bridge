@@ -9,7 +9,7 @@ if TYPE_CHECKING:
     from ..core.media import MediaStore
 
 
-def create_driver(settings: Settings, media: "MediaStore | None" = None) -> MuseDriver:
+def create_driver(settings: Settings, media: MediaStore | None = None) -> MuseDriver:
     """Instantiate the driver selected by ``MUSE2API_DRIVER``. Imports are lazy so that
     optional heavy dependencies of one driver never affect the others."""
     if settings.driver == "mock":

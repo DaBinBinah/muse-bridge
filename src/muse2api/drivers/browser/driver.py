@@ -93,7 +93,7 @@ class BrowserDriver(MuseDriver):
         chat=True, chat_images=True, image=True, image_edit=True, video=True, renew_session=True
     )
 
-    def __init__(self, settings: Settings, media: "MediaStore | None" = None) -> None:
+    def __init__(self, settings: Settings, media: MediaStore | None = None) -> None:
         self.settings = settings
         self._media = media
         """Optional MediaStore; when set, images a chat reply contains are saved locally
