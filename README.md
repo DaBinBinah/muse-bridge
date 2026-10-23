@@ -12,7 +12,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.10%2B-3478F6?logo=python&logoColor=white" alt="Python">
   <img src="https://img.shields.io/badge/License-MIT-3478F6" alt="License">
-  <img src="https://img.shields.io/badge/version-1.2.0-3478F6" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.3.0-3478F6" alt="Version">
   <img src="https://img.shields.io/badge/API-OpenAI%20Compatible-0F8B72" alt="OpenAI Compatible">
 </p>
 

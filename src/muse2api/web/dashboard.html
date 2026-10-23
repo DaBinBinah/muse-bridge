@@ -887,20 +887,23 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
   }
 
   // Shared by "add account" and "edit account"; passing an account switches to edit mode.
-  // Cookies never echo back (the server masks them), so in edit mode empty means "keep".
+  // Cookie values never echo in the fields (the server masks them); edit mode shows the
+  // masked value under each field and a button that loads the plaintext into the paste box.
   function accountForm(a = null) {
     const editing = !!a;
+    const cur = (k) => (editing && a.cookies && a.cookies[k]) ? `<span class="hint">当前：${esc(a.cookies[k])}</span>` : "";
     return modal({
       title: editing ? `编辑账号 ${a.label || a.id}` : "添加账号",
       body: `${editing
-          ? `<p class="muted" style="margin:0">Cookie 值不会回显。留空表示保持不变；填写任意一项将<b>替换全部</b>已保存的 Cookie。</p>`
+          ? `<p class="muted" style="margin:0">出于安全，已保存的 Cookie 只显示掩码。留空表示保持不变；填写任意一项将<b>替换全部</b>已保存的 Cookie。</p>
+        <div class="row"><button class="btn sm" type="button" id="af-load" data-id="${esc(a.id)}">${icon("copy")}载入当前完整值</button><span class="muted" style="font-size:12px">填入下方「整段粘贴」框</span></div>`
           : `<p class="muted" style="margin:0">在已登录 muse.ai 的浏览器中打开开发者工具 → 应用（Application）→ Cookies → muse.ai，复制下面几项的值。</p>`}
         <label class="f">备注 <span class="hint">选填——例如 acc1、主力号</span><input type="text" id="af-label" maxlength="100" autocomplete="off" value="${editing ? esc(a.label || "") : ""}"></label>
-        <label class="f">hatch_sess <span class="hint">会话凭证（最重要，通常是 HttpOnly）</span><textarea id="af-sess" rows="2" spellcheck="false" autocomplete="off"></textarea></label>
-        <label class="f">hatch_gw <span class="hint">网关标识</span><textarea id="af-gw" rows="2" spellcheck="false" autocomplete="off"></textarea></label>
-        <label class="f">hatch_vml <span class="hint">VM 标识</span><textarea id="af-vml" rows="2" spellcheck="false" autocomplete="off"></textarea></label>
-        <label class="f">hatch_native_auth_device <span class="hint">设备认证</span><textarea id="af-native" rows="2" spellcheck="false" autocomplete="off"></textarea></label>
-        <label class="f">整段粘贴 <span class="hint">选填——${editing ? "解析后将替换全部已存 Cookie" : "也可直接粘贴完整 Cookie 请求头，填了此项将优先使用"}</span><textarea id="af-raw" rows="2" spellcheck="false" autocomplete="off" placeholder="hatch_sess=...; hatch_gw=...; hatch_vml=...; hatch_native_auth_device=..."></textarea></label>`,
+        <label class="f">hatch_sess <span class="hint">会话凭证（最重要，通常是 HttpOnly）</span><textarea id="af-sess" rows="2" spellcheck="false" autocomplete="off"></textarea>${cur("hatch_sess")}</label>
+        <label class="f">hatch_gw <span class="hint">网关标识</span><textarea id="af-gw" rows="2" spellcheck="false" autocomplete="off"></textarea>${cur("hatch_gw")}</label>
+        <label class="f">hatch_vml <span class="hint">VM 标识</span><textarea id="af-vml" rows="2" spellcheck="false" autocomplete="off"></textarea>${cur("hatch_vml")}</label>
+        <label class="f">hatch_native_auth_device <span class="hint">设备认证</span><textarea id="af-native" rows="2" spellcheck="false" autocomplete="off"></textarea>${cur("hatch_native_auth_device")}</label>
+        <label class="f">整段粘贴 <span class="hint">选填——${editing ? "点击「载入当前完整值」回填；手动填写任一字段会清空此框" : "也可直接粘贴完整 Cookie 请求头，填了此项将优先使用"}</span><textarea id="af-raw" rows="2" spellcheck="false" autocomplete="off" placeholder="hatch_sess=...; hatch_gw=...; hatch_vml=...; hatch_native_auth_device=..."></textarea></label>`,
       actions: [{label: "取消", value: null},
         {label: editing ? "保存修改" : "添加账号", primary: true, cls: "primary",
          collect: () => ({label: $("#af-label").value.trim(),
@@ -929,6 +932,29 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
       });
     } else toast("已添加账号");
   }));
+
+  // "Load current values" in the edit dialog puts the raw cookie header into the paste
+  // box; typing into a per-cookie field afterwards clears it so the fields take over.
+  $("#modal-body").addEventListener("click", (e) => {
+    const btn = e.target.closest("#af-load");
+    if (!btn) return;
+    btn.disabled = true;
+    guarded(async () => {
+      const res = await api(`/admin/accounts/${encodeURIComponent(btn.dataset.id)}/cookies`);
+      $("#af-raw").value = Object.entries(res.cookies || {}).map(([k, v]) => `${k}=${v}`).join("; ");
+      btn.dataset.loaded = "1";
+      btn.disabled = false;
+      toast("已载入当前 Cookie 完整值");
+    });
+  });
+  $("#modal-body").addEventListener("input", (e) => {
+    if (!/^af-(sess|gw|vml|native)$/.test(e.target.id)) return;
+    const btn = $("#af-load"), raw = $("#af-raw");
+    if (btn && btn.dataset.loaded === "1" && raw && raw.value) {
+      raw.value = "";
+      btn.dataset.loaded = "0";
+    }
+  });
 
   // ---- overview ----
   function tile(k, v, s = "", cls = "") {

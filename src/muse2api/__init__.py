@@ -1,3 +1,3 @@
 """muse2api: OpenAI-compatible gateway for muse.ai."""
 
-__version__ = "1.2.0"
+__version__ = "1.3.0"

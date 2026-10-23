@@ -391,6 +391,24 @@ def test_admin_account_cookie_bad_format(client, admin):
     assert empty.status_code == 400
 
 
+def test_admin_account_cookies_reveal(client, auth, admin):
+    r = client.post("/admin/accounts", headers=admin,
+                    json={"label": "reveal", "cookies": {"hatch_sess": "secretvalue123"}})
+    assert r.status_code == 200
+    acc = r.json()["account"]
+
+    # The list view stays masked; the dedicated endpoint returns the plaintext.
+    listed = {a["id"]: a for a in client.get("/admin/accounts", headers=admin).json()["data"]}
+    assert listed[acc["id"]]["cookies"]["hatch_sess"] != "secretvalue123"
+    raw = client.get(f"/admin/accounts/{acc['id']}/cookies", headers=admin)
+    assert raw.status_code == 200
+    assert raw.json()["cookies"]["hatch_sess"] == "secretvalue123"
+
+    assert client.get("/admin/accounts/nope/cookies", headers=admin).status_code == 404
+    assert client.get(f"/admin/accounts/{acc['id']}/cookies").status_code == 401
+    assert client.get(f"/admin/accounts/{acc['id']}/cookies", headers=auth).status_code == 401
+
+
 def test_admin_accounts_bulk_import(client, admin):
     r = client.post("/admin/accounts/import", headers=admin, json={"accounts": [
         {"label": "b1", "cookies": {"hatch_sess": "one"}},

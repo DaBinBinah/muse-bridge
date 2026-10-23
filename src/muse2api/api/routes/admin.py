@@ -151,6 +151,17 @@ async def reset_account(account_id: str, svc: Services = Depends(get_services)) 
     return {"account": acc.public()}
 
 
+@router.get("/accounts/{account_id}/cookies")
+async def account_cookies(account_id: str, svc: Services = Depends(get_services)) -> dict:
+    """Raw cookie values for the dashboard's edit dialog.
+
+    Every other endpoint returns masked values; this is the one place the
+    plaintext leaves the server, admin-key gated like the rest of ``/admin``.
+    """
+    acc = _get(svc, account_id)
+    return {"account_id": acc.id, "cookies": acc.cookies}
+
+
 @router.post("/accounts/{account_id}/renew")
 async def renew(account_id: str, svc: Services = Depends(get_services)) -> dict:
     _get(svc, account_id)
