@@ -1,0 +1,13 @@
+services:
+  muse2api:
+    build: .
+    image: muse2api:latest
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    ports:
+      - "18610:18610"
+    volumes:
+      - ./data:/app/data
+    shm_size: "1gb"

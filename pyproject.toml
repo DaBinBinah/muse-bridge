@@ -1,0 +1,54 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "muse2api"
+version = "1.0.0"
+description = "OpenAI-compatible gateway for muse.ai with pluggable upstream drivers"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+authors = [{ name = "DaBinBinah" }]
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.5",
+    "httpx[socks]>=0.27",
+    "websockets>=13.0",
+    "python-multipart>=0.0.9",
+]
+
+[project.optional-dependencies]
+# background="transparent" for /v1/images/generations (BiRefNet + edge colour estimation)
+matting = [
+    "rembg[cpu]>=2.0.60",
+    "pymatting>=1.1",
+    "pillow>=10",
+]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.7",
+]
+
+[project.scripts]
+muse2api = "muse2api.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/muse2api"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "ASYNC"]
+ignore = ["E501", "B008"]

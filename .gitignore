@@ -1,0 +1,28 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+.env
+data/
+*.log
+
+.idea/
+.vscode/
+.DS_Store
+
+# Chromium profile artifacts that may appear if a relative user-data-dir is used
+Default/
+SingletonLock
+SingletonSocket
+SingletonCookie
+"Local State"
+Local State
+.github/
