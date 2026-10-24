@@ -134,6 +134,21 @@ class BrowserDriver(MuseDriver):
         return {"driver": self.name, "ok": ok, "tabs": len(tabs),
                 "busy_tabs": sum(t.busy for t in tabs)}
 
+    async def _ensure_browser(self) -> None:
+        """Relaunch Chromium if it exited; contexts and tabs died with it.
+
+        Called at the entry of every request-serving method, so a browser that
+        crashed or was killed mid-run only costs the relaunch, not the request.
+        """
+        if self._browser is not None and not self._browser.closed:
+            return
+        log.warning("browser is gone; relaunching Chromium")
+        # Tabs of the dead browser cannot be closed; drop them. Requests holding
+        # a lease will fail on their next CDP send and fail over as usual.
+        self._tabs.clear()
+        self._contexts.clear()
+        await self.startup()
+
     # ------------------------------------------------------------ tabs
     async def _checkout(self, account: Account,
                         prefer: Callable[[_Tab], bool] | None = None) -> _Tab:
@@ -141,6 +156,7 @@ class BrowserDriver(MuseDriver):
         per-account limit. An idle tab matching ``prefer`` wins; without one, a new
         tab beats reusing (and so wiping) a tab that holds another conversation.
         Pair every call with ``_checkin``."""
+        await self._ensure_browser()
         limit = max(1, self.settings.account_max_concurrency)
         dead: list[_Tab] = []
         async with self._tab_cond:

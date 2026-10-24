@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "muse2api"
-version = "1.4.0"
+version = "1.4.1"
 description = "OpenAI-compatible gateway for muse.ai with pluggable upstream drivers"
 readme = "README.md"
 license = { text = "MIT" }
