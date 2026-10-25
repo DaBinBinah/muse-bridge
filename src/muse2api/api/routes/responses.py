@@ -4,9 +4,10 @@ Maps ``input`` / ``instructions`` onto ``flatten_messages`` and reuses
 ``Gateway.chat_stream``. Streaming emits the standard Responses events
 (``response.created`` / ``response.output_text.delta`` / ``response.completed``).
 
-muse.ai has no function calling, so tool items (``function_call``,
-``function_call_output``) are rejected with a clear error instead of being
-silently dropped (see C3).
+Tool items (``function_call`` / ``function_call_output``) are translated into
+the emulated marker format from ``core/tools.py`` and parsed back into
+``function_call`` output items; ``reasoning`` items the SDK round-trips are
+ignored. muse.ai still has no native function calling, so this is best-effort.
 """
 
 from __future__ import annotations
@@ -26,6 +27,7 @@ from pydantic import BaseModel, ConfigDict
 from ...core.media import load_image_ref
 from ...core.models import resolve_model
 from ...core.prompt import flatten_messages, message_turns
+from ...core.tools import ToolStreamFilter, parse_tool_calls, tool_instructions
 from ...drivers.base import ChatRequest, InputImage
 from ...errors import InvalidRequest, Muse2APIError
 from ...services.container import Services
@@ -55,9 +57,8 @@ class ResponseRequest(BaseModel):
     model_config = ConfigDict(extra="allow")
 
 
-# Item types the official SDK round-trips but muse.ai cannot fulfil.
-_TOOL_ITEMS = {"function_call", "function_call_output", "reasoning", "computer_call",
-               "file_search_call", "web_search_call"}
+# Item types that cannot be emulated (only function calling can).
+_UNSUPPORTED_ITEMS = {"computer_call", "file_search_call", "web_search_call"}
 
 
 def _to_messages(body: ResponseRequest) -> list[dict]:
@@ -75,11 +76,23 @@ def _to_messages(body: ResponseRequest) -> list[dict]:
             if not isinstance(item, dict):
                 raise InvalidRequest("input items must be objects")
             itype = item.get("type")
-            if itype in _TOOL_ITEMS:
-                raise InvalidRequest(
-                    f"input item type '{itype}' is not supported: "
-                    "muse.ai has no function calling")
-            if "role" in item or itype in ("message", None):
+            if itype == "function_call":
+                messages.append({"role": "assistant", "content": None, "tool_calls": [{
+                    "id": item.get("call_id") or item.get("id") or "call_0",
+                    "type": "function",
+                    "function": {"name": item.get("name") or "",
+                                 "arguments": item.get("arguments") or "{}"}}]})
+            elif itype == "function_call_output":
+                out = item.get("output")
+                if isinstance(out, dict):
+                    out = out.get("content") or json.dumps(out, ensure_ascii=False)
+                messages.append({"role": "tool", "tool_call_id": item.get("call_id", ""),
+                                 "content": out if isinstance(out, str) else ""})
+            elif itype == "reasoning":
+                continue  # the SDK round-trips its own reasoning items; ignore
+            elif itype in _UNSUPPORTED_ITEMS:
+                raise InvalidRequest(f"input item type '{itype}' is not supported")
+            elif "role" in item or itype in ("message", None):
                 messages.append({"role": item.get("role", "user"),
                                  "content": item.get("content")})
             else:
@@ -94,6 +107,12 @@ def _message_item(msg_id: str, text: str) -> dict:
             "content": [{"type": "output_text", "annotations": [], "text": text}]}
 
 
+def _function_call_item(call: dict) -> dict:
+    return {"id": "fc_" + uuid.uuid4().hex[:24], "type": "function_call",
+            "status": "completed", "call_id": call["id"],
+            "name": call["function"]["name"], "arguments": call["function"]["arguments"]}
+
+
 def _usage(input_text: str, output_text: str) -> dict:
     i, o = _approx_tokens(input_text), _approx_tokens(output_text)
     return {"input_tokens": i, "output_tokens": o, "total_tokens": i + o,
@@ -102,12 +121,14 @@ def _usage(input_text: str, output_text: str) -> dict:
 
 
 def _response_object(resp_id: str, msg_id: str, created: int, model: str, text: str,
-                     input_text: str, *, status: str = "completed") -> dict:
+                     input_text: str, *, status: str = "completed",
+                     output: list[dict] | None = None, tools: list | None = None) -> dict:
     return {"id": resp_id, "object": "response", "created_at": created, "model": model,
             "status": status,
-            "output": [_message_item(msg_id, text)] if status == "completed" else [],
+            "output": (output if output is not None
+                       else ([_message_item(msg_id, text)] if status == "completed" else [])),
             "usage": _usage(input_text, text), "parallel_tool_calls": True,
-            "tool_choice": "auto", "tools": []}
+            "tool_choice": "auto", "tools": tools or []}
 
 
 @router.post("/v1/responses")
@@ -121,10 +142,17 @@ async def create_response(body: ResponseRequest, request: Request,
     if not flat.text and not flat.images:
         raise InvalidRequest("input contains no text or images")
 
+    # Emulated tool calling (C3), same as chat completions.
+    req_tools = getattr(body, "tools", None) or []
+    tools_active = (bool(svc.settings.tool_emulation and req_tools)
+                    and getattr(body, "tool_choice", None) != "none")
+    prompt_text = ((tool_instructions(req_tools, getattr(body, "tool_choice", None))
+                    + "\n\n" + flat.text) if tools_active else flat.text)
+
     images = [InputImage(*(await load_image_ref(ref))) for ref in flat.images]
     cancel = asyncio.Event()
     req = ChatRequest(
-        prompt=flat.text,
+        prompt=prompt_text,
         model=spec.id,
         images=images,
         timeout=svc.settings.chat_timeout,
@@ -141,7 +169,17 @@ async def create_response(body: ResponseRequest, request: Request,
 
     if not body.stream:
         text = "".join([d async for d in stream])
-        return _response_object(resp_id, msg_id, created, model_name, text, flat.text)
+        if tools_active:
+            content, calls = parse_tool_calls(text)
+            if calls:
+                items = ([_message_item(msg_id, content)] if content else []) + [
+                    _function_call_item(c) for c in calls]
+                return _response_object(resp_id, msg_id, created, model_name, text,
+                                        prompt_text, output=items, tools=req_tools)
+            out_text = content if content is not None else text
+            return _response_object(resp_id, msg_id, created, model_name, out_text,
+                                    prompt_text, tools=req_tools)
+        return _response_object(resp_id, msg_id, created, model_name, text, prompt_text)
 
     async def events(first: str | None) -> AsyncIterator[bytes]:
         # ``first`` is the pre-fetched first delta when heartbeats are disabled;
@@ -170,13 +208,13 @@ async def create_response(body: ResponseRequest, request: Request,
                         pending.cancel()
             yield _sse({"type": "response.created", "sequence_number": seq,
                         "response": _response_object(resp_id, msg_id, created, model_name,
-                                                     "", flat.text, status="in_progress")})
+                                                     "", prompt_text, status="in_progress")})
             seq += 1
             # The official SDK builds its accumulated snapshot from item/part
             # lifecycle events, so emit them around the text deltas.
             yield _sse({"type": "response.in_progress", "sequence_number": seq,
                         "response": _response_object(resp_id, msg_id, created, model_name,
-                                                     "", flat.text, status="in_progress")})
+                                                     "", prompt_text, status="in_progress")})
             seq += 1
             yield _sse({"type": "response.output_item.added", "sequence_number": seq,
                         "output_index": 0,
@@ -188,25 +226,64 @@ async def create_response(body: ResponseRequest, request: Request,
                         "part": {"type": "output_text", "text": "", "annotations": []}})
             seq += 1
             produced = first or ""
+            filt = ToolStreamFilter() if tools_active else None
 
             def delta_event(delta: str) -> dict:
                 return {"type": "response.output_text.delta", "sequence_number": seq,
                         "item_id": msg_id, "output_index": 0, "content_index": 0,
                         "delta": delta, "logprobs": []}
 
-            if produced:
-                yield _sse(delta_event(produced))
+            def safe(delta: str) -> str:
+                return filt.feed(delta) if filt else delta
+
+            out = safe(produced)
+            if out:
+                yield _sse(delta_event(out))
                 seq += 1
             async for delta in stream:
                 produced += delta
-                yield _sse(delta_event(delta))
+                out = safe(delta)
+                if out:
+                    yield _sse(delta_event(out))
+                    seq += 1
+            if filt:
+                out = filt.finish()
+                if out:
+                    yield _sse(delta_event(out))
+                    seq += 1
+
+            content, calls = (parse_tool_calls(produced) if tools_active else (produced, []))
+            final_output: list[dict] = []
+            if calls:
+                # Close the text message item first; it may carry a short preamble
+                # before the tool call blocks.
+                yield _sse({"type": "response.output_item.done", "sequence_number": seq,
+                            "output_index": 0, "item": _message_item(msg_id, content or "")})
                 seq += 1
-            yield _sse({"type": "response.output_item.done", "sequence_number": seq,
-                        "output_index": 0, "item": _message_item(msg_id, produced)})
-            seq += 1
+                if content:
+                    final_output.append(_message_item(msg_id, content))
+                for i, call in enumerate(calls, start=1):
+                    item = _function_call_item(call)
+                    yield _sse({"type": "response.output_item.added", "sequence_number": seq,
+                                "output_index": i, "item": {**item, "status": "in_progress"}})
+                    seq += 1
+                    yield _sse({"type": "response.function_call_arguments.delta",
+                                "sequence_number": seq, "item_id": item["id"],
+                                "output_index": i, "delta": item["arguments"]})
+                    seq += 1
+                    yield _sse({"type": "response.output_item.done", "sequence_number": seq,
+                                "output_index": i, "item": item})
+                    seq += 1
+                    final_output.append(item)
+            else:
+                yield _sse({"type": "response.output_item.done", "sequence_number": seq,
+                            "output_index": 0, "item": _message_item(msg_id, produced)})
+                seq += 1
+                final_output.append(_message_item(msg_id, produced))
             yield _sse({"type": "response.completed", "sequence_number": seq,
                         "response": _response_object(resp_id, msg_id, created, model_name,
-                                                     produced, flat.text)})
+                                                     produced, prompt_text,
+                                                     output=final_output, tools=req_tools)})
         except Muse2APIError as exc:
             yield _sse(exc.to_body())
         except Exception:  # noqa: BLE001

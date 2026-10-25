@@ -10,6 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from .tools import render_tool_calls
+
 ROLE_LABELS = {
     "system": "System",
     "developer": "System",
@@ -48,11 +50,25 @@ def _content_to_text(content: Any, images: list[str]) -> str:
     return "\n".join(p for p in parts if p)
 
 
+def _msg_text(msg: dict[str, Any], images: list[str]) -> str:
+    """Text of one message, including emulated tool calls and tool results.
+
+    An assistant ``tool_calls`` message is rendered in the same ``<tool_call>``
+    marker format the model was taught to emit, and ``role: "tool"`` results
+    become plain text turns labeled [Tool], so the model sees the full
+    call-result loop across requests.
+    """
+    if isinstance(msg.get("tool_calls"), list) and msg["tool_calls"]:
+        text = _content_to_text(msg.get("content"), images).strip()
+        return f"{text}\n{render_tool_calls(msg['tool_calls'])}" if text else render_tool_calls(msg["tool_calls"])
+    return _content_to_text(msg.get("content"), images).strip()
+
+
 def message_turns(messages: list[dict[str, Any]]) -> list[tuple[str, str]]:
     """Role/text pairs, using the same text extraction as ``flatten_messages``."""
     turns: list[tuple[str, str]] = []
     for msg in messages:
-        text = _content_to_text(msg.get("content"), []).strip()
+        text = _msg_text(msg, [])
         if text:
             turns.append((msg.get("role", "user"), text))
     return turns
@@ -86,7 +102,7 @@ def flatten_messages(messages: list[dict[str, Any]]) -> FlatPrompt:
     turns: list[tuple[str, str]] = []
     for msg in messages:
         role = msg.get("role", "user")
-        text = _content_to_text(msg.get("content"), images).strip()
+        text = _msg_text(msg, images)
         if text:
             turns.append((role, text))
 

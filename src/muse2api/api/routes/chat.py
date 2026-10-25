@@ -13,6 +13,7 @@ from fastapi.responses import StreamingResponse
 from ...core.media import load_image_ref
 from ...core.models import resolve_model
 from ...core.prompt import flatten_messages, message_turns
+from ...core.tools import ToolStreamFilter, parse_tool_calls, tool_instructions
 from ...drivers.base import ChatRequest, InputImage
 from ...errors import InvalidRequest, Muse2APIError
 from ...services.container import Services
@@ -42,10 +43,17 @@ async def chat_completions(body: ChatCompletionRequest, request: Request,
     if not flat.text and not flat.images:
         raise InvalidRequest("messages contain no text or images")
 
+    # Emulated tool calling (C3): describe the tools in the prompt and parse the
+    # marker format back out of the reply (see core/tools.py).
+    tools_active = bool(svc.settings.tool_emulation and body.tools
+                        and body.tool_choice != "none")
+    prompt_text = ((tool_instructions(body.tools, body.tool_choice) + "\n\n" + flat.text)
+                   if tools_active else flat.text)
+
     images = [InputImage(*(await load_image_ref(ref))) for ref in flat.images]
     cancel = asyncio.Event()
     req = ChatRequest(
-        prompt=flat.text,
+        prompt=prompt_text,
         model=spec.id,
         images=images,
         timeout=svc.settings.chat_timeout,
@@ -61,17 +69,25 @@ async def chat_completions(body: ChatCompletionRequest, request: Request,
 
     if not body.stream:
         text = "".join([d async for d in stream])
+        message: dict = {"role": "assistant", "content": text}
+        finish = "stop"
+        if tools_active:
+            content, calls = parse_tool_calls(text)
+            if calls:
+                message = {"role": "assistant", "content": content, "tool_calls": calls}
+                finish = "tool_calls"
+            elif content is not None:
+                message["content"] = content
         return {
             "id": completion_id,
             "object": "chat.completion",
             "created": created,
             "model": model_name,
-            "choices": [{"index": 0, "message": {"role": "assistant", "content": text},
-                         "finish_reason": "stop"}],
+            "choices": [{"index": 0, "message": message, "finish_reason": finish}],
             "usage": {
-                "prompt_tokens": _approx_tokens(flat.text),
+                "prompt_tokens": _approx_tokens(prompt_text),
                 "completion_tokens": _approx_tokens(text),
-                "total_tokens": _approx_tokens(flat.text) + _approx_tokens(text),
+                "total_tokens": _approx_tokens(prompt_text) + _approx_tokens(text),
             },
         }
 
@@ -109,13 +125,36 @@ async def chat_completions(body: ChatCompletionRequest, request: Request,
                     if not pending.done():
                         pending.cancel()
             produced = first or ""
-            yield _sse(chunk({"role": "assistant", "content": produced}))
-            async for delta in stream:
-                produced += delta
-                yield _sse(chunk({"content": delta}))
-            yield _sse(chunk({}, "stop"))
+            if tools_active:
+                # Stream through the marker gate: text is passed through (with a
+                # partial-tag holdback) until a <tool_call> appears, then the
+                # rest is swallowed and returned as tool_calls deltas instead.
+                filt = ToolStreamFilter()
+                out = filt.feed(produced)
+                yield _sse(chunk({"role": "assistant", "content": out}))
+                async for delta in stream:
+                    produced += delta
+                    out = filt.feed(delta)
+                    if out:
+                        yield _sse(chunk({"content": out}))
+                out = filt.finish()
+                if out:
+                    yield _sse(chunk({"content": out}))
+                _, calls = parse_tool_calls(produced)
+                if calls:
+                    for i, call in enumerate(calls):
+                        yield _sse(chunk({"tool_calls": [dict(call, index=i)]}))
+                    yield _sse(chunk({}, "tool_calls"))
+                else:
+                    yield _sse(chunk({}, "stop"))
+            else:
+                yield _sse(chunk({"role": "assistant", "content": produced}))
+                async for delta in stream:
+                    produced += delta
+                    yield _sse(chunk({"content": delta}))
+                yield _sse(chunk({}, "stop"))
             if (body.stream_options or {}).get("include_usage"):
-                usage = {"prompt_tokens": _approx_tokens(flat.text),
+                usage = {"prompt_tokens": _approx_tokens(prompt_text),
                          "completion_tokens": _approx_tokens(produced)}
                 usage["total_tokens"] = usage["prompt_tokens"] + usage["completion_tokens"]
                 yield _sse({"id": completion_id, "object": "chat.completion.chunk",

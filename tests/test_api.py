@@ -257,11 +257,10 @@ def test_responses_stream(client, auth):
 def test_responses_rejects_bad_input(client, auth):
     empty = client.post("/v1/responses", headers=auth, json={"input": "  "})
     assert empty.status_code == 400
-    tools = client.post("/v1/responses", headers=auth, json={
-        "input": [{"type": "function_call", "name": "get_weather",
-                   "arguments": "{}"}]})
-    assert tools.status_code == 400
-    assert "function calling" in tools.json()["error"]["message"]
+    bad = client.post("/v1/responses", headers=auth, json={
+        "input": [{"type": "computer_call"}]})
+    assert bad.status_code == 400
+    assert "not supported" in bad.json()["error"]["message"]
 
 
 def _capture_image_requests(client, monkeypatch) -> list:

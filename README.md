@@ -12,7 +12,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.10%2B-3478F6?logo=python&logoColor=white" alt="Python">
   <img src="https://img.shields.io/badge/License-MIT-3478F6" alt="License">
-  <img src="https://img.shields.io/badge/version-1.4.1-3478F6" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.5.0-3478F6" alt="Version">
   <img src="https://img.shields.io/badge/API-OpenAI%20Compatible-0F8B72" alt="OpenAI Compatible">
 </p>
 
@@ -75,6 +75,7 @@ MuseBridge 是一个面向开发者的 Muse AI API 反向代理项目。
 - **Muse AI API 反向代理**：通过统一的接口转发 API 请求。
 - **CC Switch 支持**：支持在兼容的 CC Switch 使用场景中配置和管理 API 接入。
 - **Codex CLI 支持**：支持将 Muse AI API 接入 Codex CLI 客户端。
+- **工具调用（模拟）**：通过提示词模拟 OpenAI function calling——请求中的 `tools` 注入提示词，模型按约定格式输出调用，再翻译回标准 `tool_calls`。尽力而为，可用 `MUSE2API_TOOL_EMULATION=false` 关闭。
 - **账号管理**：通过 Web 管理面板管理已配置的账号。
 - **API 密钥管理**：管理代理服务的 API 访问密钥。
 - **请求监控**：查看请求数量、错误率和响应延迟等统计数据。
@@ -110,7 +111,7 @@ wire_api = "chat"
 
 并将环境变量 `OPENAI_API_KEY` 设置为管理面板中创建的 API 密钥。
 
-> **注意**：MuseBridge 提供 OpenAI 兼容的对话接口（支持流式与非流式）以及图片、视频生成接口。不同客户端对 API 协议、认证方式和模型参数的要求可能不同；Codex CLI 的 agent 工具调用（执行命令、修改文件等）依赖 function calling，当前版本在 Codex CLI 中以对话能力为主。
+> **注意**：MuseBridge 提供 OpenAI 兼容的对话接口（支持流式与非流式）以及图片、视频生成接口。工具调用（tool use / function calling）通过提示词模拟实现：`tools` 定义注入提示词，模型按约定标记格式输出调用意图，代理再翻译回标准 `tool_calls`，Codex CLI 的 agent 工具调用（执行命令、修改文件等）即基于此机制，属尽力而为——模型偶尔不按格式时会降级为普通文字回复（可用 `MUSE2API_TOOL_EMULATION=false` 关闭）；web_search 等客户端专有端点不在支持范围。不同客户端对 API 协议、认证方式和模型参数的要求可能不同。
 
 ### 管理面板
 
@@ -200,6 +201,7 @@ MuseBridge aims to simplify the integration of Muse AI with developer tools, inc
 - **Muse AI API Proxy** — Forward API requests through a unified interface.
 - **CC Switch Support** — Configure API access for compatible CC Switch workflows.
 - **Codex CLI Support** — Connect Muse AI API access to the Codex CLI client.
+- **Emulated Tool Calling** — OpenAI `tools` are described in the prompt and the marker-formatted reply is translated back into standard `tool_calls`. Best-effort (muse.ai has no native function calling); disable with `MUSE2API_TOOL_EMULATION=false`.
 - **Account Management** — Manage configured accounts through a web dashboard.
 - **API Key Management** — Manage API keys used to access the proxy.
 - **Request Monitoring** — View request counts, error rates, and response latency.
@@ -235,7 +237,7 @@ wire_api = "chat"
 
 Then set the `OPENAI_API_KEY` environment variable to an API key created in the dashboard.
 
-> **Note**: MuseBridge exposes OpenAI-compatible chat endpoints (streaming and non-streaming) plus image and video generation endpoints. API protocols, authentication methods, and model parameters may vary between clients. Agentic tool calling in Codex CLI (running commands, editing files, etc.) relies on function calling and is not fully supported; Codex CLI works with MuseBridge primarily as a chat assistant.
+> **Note**: MuseBridge exposes OpenAI-compatible chat endpoints (streaming and non-streaming) plus image and video generation endpoints. Tool calling is emulated at the prompt level: `tools` from the request are injected into the prompt and the model's marker-formatted reply is converted back into standard `tool_calls`. This is best-effort — a reply that does not follow the format degrades to plain text (turn it off with `MUSE2API_TOOL_EMULATION=false`). Agentic tool calling in Codex CLI (running commands, editing files) works on top of this emulation; proprietary endpoints such as web search are out of scope. API protocols, authentication methods, and model parameters may vary between clients.
 
 ### Getting Started
 

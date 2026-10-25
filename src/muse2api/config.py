@@ -71,6 +71,14 @@ class Settings(BaseSettings):
             return None
         return v
 
+    # --- emulated tool calling (TODO C3) ---
+    tool_emulation: bool = Field(
+        default=True,
+        description="Translate OpenAI ``tools`` into prompt instructions and parse the reply "
+        "back into ``tool_calls``. muse.ai has no native function calling, so this is "
+        "best-effort: replies without the expected marker pass through as plain text.",
+    )
+
     # --- timeouts (seconds) ---
     chat_timeout: float = 300.0
     first_token_timeout: float = 45.0

@@ -23,7 +23,7 @@ Priorities: **P0** must be done first · **P1** core feature · **P2** better ex
 | B3 | Quota lookup | P2 | `MuseDriver.quota` | | Partial (mock done; real-driver lookup open) |
 | C1 | `/v1/responses` endpoint | P1 | `api/routes/responses.py` | | Done (local; verified with the official OpenAI SDK streaming + non-streaming against the mock driver; real-account check pending) |
 | C2 | `/v1/images/edits` endpoint | P1 | `api/routes/images.py` | | Not started |
-| C3 | Emulated tool calling | P2 | `core/prompt.py` | | Not started |
+| C3 | Emulated tool calling | P2 | `core/tools.py` | | Done |
 | C4 | Streaming heartbeats to avoid client timeouts | P2 | `api/routes/chat.py` | | Done |
 | D1 | Support more cookie import formats | P1 | `api/routes/admin.py` | | Done |
 | D2 | Cookie import browser extension | P2 | `extension/` (new) | | Not started |
@@ -118,6 +118,7 @@ Done. A follow-up whose `messages` continue the conversation already on the page
 ### C3 Emulated tool calling · P2
 - muse.ai has no native function calling. The idea is to describe the available tools and an output format in the prompt, parse tool calls out of the reply, and convert them to OpenAI's `tool_calls` format.
 - muse.ai may refuse to follow the requested format, so verify feasibility first and ship it behind a config flag that is off by default.
+- **Done** in `core/tools.py` (v1.5.0): Hermes-style `<tool_call>` marker protocol with a decision-only rule, tool/`tool_calls` history flattening, tolerant parsing (fences, parallel calls, truncated blocks), a stream gate that never leaks the raw marker, and `/v1/responses` `function_call` item translation. Flag `MUSE2API_TOOL_EMULATION` (default on). Verified against the mock driver; real-account Codex CLI check pending.
 
 ### C4 Streaming heartbeats to avoid client timeouts · P2
 - Streaming requests wait for the first chunk before responding, which can take up to 45 seconds (`first_token_timeout`). Some clients and reverse proxies time out in the meantime.
