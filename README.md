@@ -300,6 +300,36 @@ MuseBridge is an open-source technical project intended for API integration, req
 
 ---
 
+## 更新日志
+
+**v1.7.1（2026-10-25）**
+
+- 账号卡片加了 Token 用量统计：今天 / 本月 / 本季 / 今年各用了多少一目了然，鼠标放上去能看到精确数字和请求次数
+- API 密钥页加了客户端接入指南：CC Switch 怎么配、Codex CLI 的 config.toml 怎么写、curl 怎么自测，都带一键复制
+- Token 那一行的排版重新调过，和上面的指标对齐了
+
+**v1.6.0 ~ v1.6.3（2026-10-25）**
+
+- **浏览器登录**：面板「账号」页点一下，弹个 Chrome 窗口，登完 muse.ai Cookie 自动进池子——HttpOnly 的也能拿到，不用再去 F12 里抠了。多个账号就连着登，一个窗口登一个
+- 查明白了大家反馈的"拿不到 hatch_gw"：新登录的 muse.ai 压根不发这个 Cookie。现在只需要 `hatch_sess` + `hatch_native_auth_device` 两个就能跑，`hatch_gw` / `hatch_vml` 有就带上，没有无所谓
+- 添加账号弹窗里塞了个带截图的新手指南，照着点就行
+
+**v1.5.0（2026-10-25）**
+
+- **工具调用（tool use）能用了**：通过提示词模拟实现，Codex CLI 接上来不再只能聊天，执行命令、改文件这些 agent 操作都能跑。真机验证过完整闭环。尽力而为：模型偶尔不按格式出牌就当普通回复返回，不会报错。`MUSE2API_TOOL_EMULATION=false` 可关
+
+**v1.4.x（2026-10-24）**
+
+- 管理面板账号编辑：打开自动带出当前 Cookie 明文，改哪个存哪个，其他 Cookie 不动
+- Chromium 挂了会自动拉起来，不用手动重启服务
+- 流式输出加了心跳，不再被中间层掐断空闲连接
+
+**v1.1 ~ v1.3（2026-10-23）**
+
+- 面板加账号 / 编辑 / Cookie 显示开关这些基础功能，README 截图，README 快速开始默认改成 browser 驱动
+
+---
+
 <p align="center">
   <strong>MuseBridge</strong><br>
   Bridging Muse AI with developer tools.
