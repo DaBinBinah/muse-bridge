@@ -20,6 +20,10 @@
   <strong>简洁 · 开源 · 易于管理</strong>
 </p>
 
+<p align="center">
+  🙏 感谢 <a href="https://linux.do">linux.do</a> 社区 · 本项目首发于 <a href="https://linux.do">linux.do</a>
+</p>
+
 ---
 
 ## 📖 目录 / Contents
