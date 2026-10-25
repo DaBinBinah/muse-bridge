@@ -135,6 +135,27 @@ def test_login_capture_refreshes_same_account(client, admin, fake_browser):
     assert plain["hatch_gw"] == "G2"
 
 
+def test_login_capture_two_different_accounts(client, admin, fake_browser):
+    """The multi-account workflow: consecutive logins with different sessions
+    each get their own account in the pool."""
+    FakeSession.jar = list(FULL)
+    r1 = client.post("/admin/accounts/login", headers=admin, json={"label": "acc1"})
+    first = _wait_status(client.app.state.services, r1.json()["id"], "captured")
+
+    # a second muse.ai account: different hatch_sess (and rotated hatch_gw)
+    FakeSession.jar = [dict(c, value={"hatch_sess": "S2", "hatch_gw": "G2",
+                                      "hatch_vml": "V2", "hatch_native_auth_device": "N2"}
+                            [c["name"]]) for c in FULL if c["name"] != "other"]
+    r2 = client.post("/admin/accounts/login", headers=admin, json={"label": "acc2"})
+    second = _wait_status(client.app.state.services, r2.json()["id"], "captured")
+
+    assert second.account["id"] != first.account["id"]
+    assert second.created_account is True
+    assert second.account["label"] == "acc2"
+    accounts = client.get("/admin/accounts", headers=admin).json()["data"]
+    assert len(accounts) == 2
+
+
 def test_login_capture_cancel(client, admin, fake_browser):
     FakeSession.jar = []  # nothing logs in
     r = client.post("/admin/accounts/login", headers=admin, json={})

@@ -956,7 +956,7 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
   }));
 
   // ---- in-dashboard browser login: auto cookie capture ----
-  $("#acc-login").addEventListener("click", () => guarded(async () => {
+  async function browserLoginFlow() {
     const f = await modal({
       title: "浏览器登录添加账号",
       body: `<p class="muted" style="margin:0">点击开始后，服务器会打开一个 Chrome 窗口并进入 muse.ai。在窗口里用任意方式完成登录，Cookie（包括开发者工具里看不到的 HttpOnly 项，如 hatch_gw）会自动抓取并入池，无需再手动复制。同一账号重新登录会自动刷新原账号的 Cookie。</p>
@@ -968,7 +968,8 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
     });
     if (!f) return;
     await runLoginCapture(f.label);
-  }));
+  }
+  $("#acc-login").addEventListener("click", () => guarded(browserLoginFlow));
 
   async function runLoginCapture(label) {
     let info;
@@ -1008,7 +1009,14 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
     const st = terminal || {};
     await loadAccountsPage();
     if (st.status === "captured") {
-      toast(st.created_account === false ? "已自动刷新原账号的 Cookie" : "已自动添加账号");
+      const msg = st.created_account === false ? "已自动刷新原账号的 Cookie" : "已自动添加账号";
+      const again = await modal({
+        title: "浏览器登录成功",
+        body: `<div class="infobox">${esc(msg)}。有多个 muse.ai 账号时，点「继续登录下一个」即可依次添加——每个窗口都是全新的浏览器，各账号 Cookie 独立入池，由账号池自动轮换调度。</div>`,
+        actions: [{label: "完成", value: null},
+          {label: "继续登录下一个", value: "again", primary: true, cls: "primary"}],
+      });
+      if (again === "again") await browserLoginFlow();
     } else {
       await modal({
         title: "浏览器登录未完成",
