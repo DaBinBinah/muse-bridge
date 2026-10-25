@@ -266,8 +266,10 @@ details.guide img { width: 100%; border: 1px solid var(--border); border-radius:
 details.guide p { margin: 8px 0 0; font-size: 12.5px; }
 details.guide h4 { margin: 12px 0 4px; font-size: 13px; }
 details.guide pre.code { background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 10px; overflow: auto; font-size: 12px; margin: 6px 0; white-space: pre; }
-.usagerow { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border); font-size: 12px; }
-.usagerow b { font-variant-numeric: tabular-nums; }
+.usage { display: flex; align-items: center; gap: 12px; margin-top: 2px; padding: 8px 14px 10px 16px; border-top: 1px dashed var(--border); }
+.usage .cap { flex: 0 0 auto; padding-right: 12px; border-right: 1px solid var(--border); color: var(--muted); font-size: 10.5px; line-height: 1.35; font-weight: 600; letter-spacing: .04em; }
+.usage .metrics { flex: 1; grid-template-columns: repeat(4, 1fr); padding: 0; }
+.usage .metrics dd.zero { color: var(--muted); opacity: .55; }
 
 /* ---------- modal & toast ---------- */
 .overlay { position: fixed; inset: 0; background: rgba(8, 12, 14, .5); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 60; animation: fade .12s ease-out; }
@@ -811,9 +813,9 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
         const u = state.accountUsage[a.id] || {};
         const cell = (label, key) => {
           const tok = u["tokens_" + key] || 0, req = u["requests_" + key] || 0;
-          return `<span title="${label}：${fmtNum(tok)} tokens · ${fmtNum(req)} 次请求">${label} <b>${fmtTokens(tok)}</b></span>`;
+          return `<div><dt>${label}</dt><dd${tok ? "" : ' class="zero"'} title="${label}：${fmtNum(tok)} tokens · ${fmtNum(req)} 次请求">${fmtTokens(tok)}</dd></div>`;
         };
-        return `<div class="usagerow">${cell("今日", "day")}${cell("本月", "month")}${cell("本季", "quarter")}${cell("今年", "year")}</div>`;
+        return `<div class="usage"><span class="cap">Token<br>用量</span><dl class="metrics">${cell("今日", "day")}${cell("本月", "month")}${cell("本季", "quarter")}${cell("今年", "year")}</dl></div>`;
       })()}
       ${cooling ? `<div class="cooldown">
           <span class="t" data-until="${esc(a.cooldown_until)}">${esc(countdown(a.cooldown_until - t))}</span>
