@@ -10,6 +10,16 @@ def test_health(client):
     assert client.get("/readyz").json()["ready"] is True
 
 
+def test_dashboard_embeds_cookie_guide(client):
+    """The add-account dialog ships a self-contained beginner guide with the
+    devtools screenshot (base64, no external assets)."""
+    r = client.get("/dashboard")
+    assert r.status_code == 200
+    assert "新手指南" in r.text
+    assert "hatch_native_auth_device" in r.text
+    assert "data:image/png;base64," in r.text
+
+
 def test_auth_required(client):
     r = client.get("/v1/models")
     assert r.status_code == 401
