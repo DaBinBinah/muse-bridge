@@ -27,7 +27,8 @@ log = logging.getLogger(__name__)
 current_record: ContextVar[dict[str, Any] | None] = ContextVar("current_record", default=None)
 
 COLUMNS = ("ts", "method", "path", "model", "key_id", "key_name", "account_id", "status_code",
-           "latency_ms", "stream", "poll", "error", "client_ip", "user_agent", "task_id")
+           "latency_ms", "stream", "poll", "error", "client_ip", "user_agent", "task_id",
+           "input_tokens", "output_tokens")
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS requests (
@@ -55,7 +56,8 @@ CREATE INDEX IF NOT EXISTS idx_requests_task ON requests (task_id);
 """
 
 # Columns added after the first release; created on open when missing.
-_ADDED_COLUMNS = {"task_status": "TEXT", "task_ms": "INTEGER"}
+_ADDED_COLUMNS = {"task_status": "TEXT", "task_ms": "INTEGER",
+                  "input_tokens": "INTEGER DEFAULT 0", "output_tokens": "INTEGER DEFAULT 0"}
 
 # A request failed if it got an HTTP error or its async task failed later.
 FAILED = "(status_code >= 400 OR task_status = 'failed')"
@@ -74,12 +76,37 @@ def note_account(account_id: str) -> None:
         record["account_id"] = account_id
 
 
+def note_tokens(input_tokens: int, output_tokens: int) -> None:
+    """Record a chat response's token counts onto the current request row.
+
+    Called by the routes once the full reply is known; the middleware writes
+    the row after the response (stream included) has finished, so streaming
+    updates land in the same row.
+    """
+    record = current_record.get()
+    if record is not None:
+        record["input_tokens"] = int(input_tokens)
+        record["output_tokens"] = int(output_tokens)
+
+
 def _percentile(sorted_values: list[int], q: float) -> int | None:
     if not sorted_values:
         return None
     # Nearest-rank percentile.
     idx = max(0, min(len(sorted_values) - 1, math.ceil(q * len(sorted_values)) - 1))
     return sorted_values[idx]
+
+
+def _calendar_bounds() -> dict[str, float]:
+    """Unix timestamps of the start of today / this month / quarter / year (local time)."""
+    import datetime as _dt
+    day = _dt.datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    return {
+        "day": day.timestamp(),
+        "month": day.replace(day=1).timestamp(),
+        "quarter": day.replace(month=3 * ((day.month - 1) // 3) + 1, day=1).timestamp(),
+        "year": day.replace(month=1, day=1).timestamp(),
+    }
 
 
 class RequestLog:
@@ -273,6 +300,22 @@ class RequestLog:
             }
 
         return await asyncio.to_thread(self._call, run)
+
+    async def account_usage(self) -> dict[str, Any]:
+        """Per-account token totals and request counts over calendar windows
+        (day / month / quarter / year, local server time), for the accounts page."""
+        bounds = _calendar_bounds()
+        order = ("day", "month", "quarter", "year")
+        args = [b for k in order for b in (bounds[k], bounds[k])]
+        sums = ",\n  ".join(
+            f"CAST(COALESCE(SUM(CASE WHEN ts >= ? THEN input_tokens + output_tokens "
+            f"ELSE 0 END), 0) AS INTEGER) AS tokens_{k}, "
+            f"CAST(COALESCE(SUM(ts >= ?), 0) AS INTEGER) AS requests_{k}"
+            for k in order)
+        sql = (f"SELECT account_id, {sums} FROM requests "
+               f"WHERE poll = 0 AND account_id IS NOT NULL GROUP BY account_id")
+        rows = await asyncio.to_thread(self._call, lambda db: db.execute(sql, args).fetchall())
+        return {"bounds": bounds, "data": {r["account_id"]: dict(r) for r in rows}}
 
     async def key_usage(self) -> dict[str, Any]:
         """Per-key request counts in one GROUP BY: everything kept (see retention), the

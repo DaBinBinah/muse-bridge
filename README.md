@@ -12,7 +12,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.10%2B-3478F6?logo=python&logoColor=white" alt="Python">
   <img src="https://img.shields.io/badge/License-MIT-3478F6" alt="License">
-  <img src="https://img.shields.io/badge/version-1.6.3-3478F6" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.7.0-3478F6" alt="Version">
   <img src="https://img.shields.io/badge/API-OpenAI%20Compatible-0F8B72" alt="OpenAI Compatible">
 </p>
 
@@ -121,8 +121,8 @@ MuseBridge 提供 Web 管理面板（默认 `http://127.0.0.1:18610/dashboard`�
 | 模块 | 说明 |
 |---|---|
 | 总览 | 请求量、错误率、响应延迟、按模型统计等 |
-| 账号 | 管理 muse.ai 账号（浏览器登录自动获取、添加 / 编辑 Cookie、启用停用、续期） |
-| API 密钥 | 管理客户端调用密钥 |
+| 账号 | 管理 muse.ai 账号（浏览器登录自动获取、添加 / 编辑 Cookie、启用停用、续期、Token 用量统计（日 / 月 / 季 / 年）） |
+| API 密钥 | 管理客户端调用密钥；内置 CC Switch / Codex CLI 接入指南 |
 | 请求记录 | 查看已有请求日志 |
 
 管理面板的具体功能以当前版本为准。

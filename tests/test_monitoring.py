@@ -202,6 +202,53 @@ async def test_prune(settings):
     await log.close()
 
 
+async def test_account_usage_windows(settings):
+    import time
+
+    from muse2api.services.request_log import RequestLog
+
+    log = RequestLog(settings.requests_db)
+    base = {"method": "POST", "path": "/v1/chat/completions", "latency_ms": 1,
+            "status_code": 200, "account_id": "acc_1"}
+    now = time.time()
+    await log.add({**base, "ts": now, "input_tokens": 100, "output_tokens": 50})
+    await log.add({**base, "ts": now, "input_tokens": 10, "output_tokens": 5})
+    await log.add({**base, "ts": now - 10 * 365 * 86400,
+                   "input_tokens": 999, "output_tokens": 999, "account_id": "acc_2"})
+    usage = await log.account_usage()
+    assert set(usage["bounds"]) == {"day", "month", "quarter", "year"}
+    assert usage["data"]["acc_1"]["tokens_day"] == 165
+    assert usage["data"]["acc_1"]["requests_day"] == 2
+    assert usage["data"]["acc_1"]["tokens_month"] == 165
+    assert usage["data"]["acc_1"]["tokens_quarter"] == 165
+    assert usage["data"]["acc_1"]["tokens_year"] == 165
+    assert usage["data"]["acc_2"]["tokens_year"] == 0
+
+
+def test_chat_tokens_logged_and_account_usage(client, auth, admin):
+    acc1 = client.post("/admin/accounts", headers=admin, json={
+        "cookies": {"hatch_sess": "s1", "hatch_native_auth_device": "n1"}}).json()["account"]
+    acc2 = client.post("/admin/accounts", headers=admin, json={
+        "label": "idle", "cookies": {"hatch_sess": "s2", "hatch_native_auth_device": "n2"}}).json()["account"]
+    served = acc1["id"] if acc1["created_at"] <= acc2["created_at"] else acc2["id"]
+
+    r = client.post("/v1/chat/completions", headers=auth, json={
+        "model": "gpt-4o", "messages": [{"role": "user", "content": "hello token counting"}]})
+    assert r.status_code == 200
+
+    row = _requests(client, admin, limit=1)[0]
+    assert row["input_tokens"] > 0 and row["output_tokens"] > 0
+    assert row["account_id"] == served
+
+    usage = client.get("/admin/accounts/usage", headers=admin).json()
+    by_id = {u["account_id"]: u for u in usage["data"]}
+    assert set(by_id) == {acc1["id"], acc2["id"]}
+    assert by_id[served]["tokens_day"] > 0 and by_id[served]["requests_day"] == 1
+    idle = acc2["id"] if served == acc1["id"] else acc1["id"]
+    assert by_id[idle]["tokens_year"] == 0
+    assert client.get("/admin/accounts/usage", headers=auth).status_code == 401
+
+
 def test_dashboard_html(client):
     r = client.get("/dashboard")
     assert r.status_code == 200

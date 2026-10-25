@@ -31,6 +31,7 @@ from ...core.tools import ToolStreamFilter, compose_tool_prompt, parse_tool_call
 from ...drivers.base import ChatRequest, InputImage
 from ...errors import InvalidRequest, Muse2APIError
 from ...services.container import Services
+from ...services.request_log import note_tokens
 from ..deps import get_services, require_api_key
 
 log = logging.getLogger(__name__)
@@ -171,6 +172,7 @@ async def create_response(body: ResponseRequest, request: Request,
 
     if not body.stream:
         text = "".join([d async for d in stream])
+        note_tokens(_approx_tokens(prompt_text), _approx_tokens(text))
         if tools_active:
             content, calls = parse_tool_calls(text)
             if calls:
@@ -252,6 +254,7 @@ async def create_response(body: ResponseRequest, request: Request,
                 pending = filt.finish()
             else:
                 pending = ""
+            note_tokens(_approx_tokens(prompt_text), _approx_tokens(produced))
 
             content, calls = (parse_tool_calls(produced) if tools_active else (produced, []))
             if not calls and pending:

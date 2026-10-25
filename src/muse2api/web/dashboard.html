@@ -264,6 +264,10 @@ details.guide summary { cursor: pointer; font-weight: 600; font-size: 13px; }
 details.guide ol { margin: 8px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
 details.guide img { width: 100%; border: 1px solid var(--border); border-radius: 6px; margin-top: 8px; }
 details.guide p { margin: 8px 0 0; font-size: 12.5px; }
+details.guide h4 { margin: 12px 0 4px; font-size: 13px; }
+details.guide pre.code { background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 10px; overflow: auto; font-size: 12px; margin: 6px 0; white-space: pre; }
+.usagerow { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border); font-size: 12px; }
+.usagerow b { font-variant-numeric: tabular-nums; }
 
 /* ---------- modal & toast ---------- */
 .overlay { position: fixed; inset: 0; background: rgba(8, 12, 14, .5); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 60; animation: fade .12s ease-out; }
@@ -473,6 +477,21 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
           </div>
         </div>
         <p class="muted" style="font-size: 12px; margin: 8px 2px 0;">数据来自请求日志（按保留期限配置自动清理），不含轮询。点击某一行可查看该密钥的请求记录。</p>
+        <details class="guide" id="client-guide" style="margin-top: 14px;">
+          <summary>客户端接入指南：如何把密钥添加到 CC Switch / Codex CLI（点击展开）</summary>
+          <h4>方式一：CC Switch（推荐，图形界面）</h4>
+          <ol>
+            <li>打开 CC Switch → <b>供应商</b> → <b>Codex</b> 分栏 → <b>添加供应商</b>；</li>
+            <li><b>Base URL</b> 填 <code class="mono origin-text"></code>，<b>API Key</b> 粘贴上面创建的密钥（<code class="mono">m2a-</code> 开头）；</li>
+            <li>模型填 <code class="mono">gpt-4o</code> 等别名（以 <code class="mono">GET /v1/models</code> 返回为准），保存后切换到该供应商即可。</li>
+          </ol>
+          <h4>方式二：Codex CLI</h4>
+          <p>编辑 <code class="mono">~/.codex/config.toml</code>，并设置环境变量 <code class="mono">export OPENAI_API_KEY=你的密钥</code>：</p>
+          <div class="row"><pre class="code grow" id="cg-toml"></pre><button class="btn sm" type="button" data-copy="cg-toml">复制</button></div>
+          <h4>方式三：任意 OpenAI 兼容客户端 / curl 自测</h4>
+          <div class="row"><pre class="code grow" id="cg-curl"></pre><button class="btn sm" type="button" data-copy="cg-curl">复制</button></div>
+          <p class="muted">提示：地址为本机访问地址，远程访问请替换为服务器的实际地址（如 <code class="mono">http://192.168.x.x:18610/v1</code>）；建议先用 curl 自测通过，再接入客户端。流式输出同样支持。</p>
+        </details>
       </section>
 
       <!-- requests -->
@@ -535,6 +554,7 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
   const state = {
     page: "overview", window: "24h", offset: 0, limit: 50,
     accounts: [], keys: [], builtin: [], capabilities: {}, timer: null, modalOpen: false,
+    accountUsage: {},
   };
 
   // ---- helpers ----
@@ -548,6 +568,8 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
   const setKey = (k) => store.set(STORE, k);
   const now = () => Date.now() / 1000;
   const fmtNum = (n) => n == null ? "–" : Number(n).toLocaleString("en-US");
+  const fmtTokens = (n) => n == null || !n ? "0" : n < 1000 ? String(n)
+    : n < 1e6 ? (n / 1e3).toFixed(n < 1e4 ? 1 : 0) + "k" : (n / 1e6).toFixed(2) + "M";
   const fmtMs = (ms) => ms == null ? "–" : ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(ms < 10000 ? 2 : 1)} s`;
   const fmtPct = (r) => `${(r * 100).toFixed(r && r < 0.1 ? 2 : 1)}%`;
   const icon = (name) => `<svg class="i"><use href="#i-${name}"/></svg>`;
@@ -785,6 +807,14 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
         <div><dt>失败</dt><dd>${a.fail_count ? `<span class="f">${fmtNum(a.fail_count)}</span>` : "0"}</dd></div>
         <div><dt>最后使用</dt><dd title="${esc(fullTime(a.last_used_at))}" data-ago="${esc(a.last_used_at || 0)}">${esc(ago(a.last_used_at))}</dd></div>
       </dl>
+      ${(() => {
+        const u = state.accountUsage[a.id] || {};
+        const cell = (label, key) => {
+          const tok = u["tokens_" + key] || 0, req = u["requests_" + key] || 0;
+          return `<span title="${label}：${fmtNum(tok)} tokens · ${fmtNum(req)} 次请求">${label} <b>${fmtTokens(tok)}</b></span>`;
+        };
+        return `<div class="usagerow">${cell("今日", "day")}${cell("本月", "month")}${cell("本季", "quarter")}${cell("今年", "year")}</div>`;
+      })()}
       ${cooling ? `<div class="cooldown">
           <span class="t" data-until="${esc(a.cooldown_until)}">${esc(countdown(a.cooldown_until - t))}</span>
           <span class="w"><b>${s.key === "quota" ? "配额用尽" : "临时冷却"}</b>将于 ${esc(new Date(a.cooldown_until * 1000).toLocaleTimeString([], {hour12: false}))} 自动恢复</span>
@@ -816,7 +846,15 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
     $("#accounts").innerHTML = list.map(accountCard).join("")
       || `<div class="panel empty">尚无账号。点击右上角「添加账号」，粘贴 muse.ai 的会话 Cookie 即可。</div>`;
   }
-  async function loadAccountsPage() { await loadAccounts(); renderAccounts(); }
+  async function loadAccountsPage() {
+    await Promise.all([
+      loadAccounts(),
+      api("/admin/accounts/usage").then((r) => {
+        state.accountUsage = Object.fromEntries((r.data || []).map((x) => [x.account_id, x]));
+      }).catch(() => {}),  // usage is cosmetic — cards render zeros without it
+    ]);
+    renderAccounts();
+  }
 
   $("#accounts").addEventListener("change", (e) => {
     const input = e.target.closest("input[data-act=toggle]");
@@ -1424,6 +1462,35 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
 
   // ---- routing: #page or #requests?key=..&account=.. ----
   const loaders = {overview: loadOverview, accounts: loadAccountsPage, keys: loadKeys, requests: loadRequests};
+
+  // ---- client guide: dynamic origin + copyable snippets ----
+  (function fillClientGuide() {
+    const o = location.origin;
+    $$(".origin-text").forEach((el) => { el.textContent = `${o}/v1`; });
+    $("#cg-toml").textContent = [
+      'model = "gpt-4o"',
+      'model_provider = "musebridge"',
+      "",
+      "[model_providers.musebridge]",
+      'name = "MuseBridge"',
+      `base_url = "${o}/v1"`,
+      'wire_api = "chat"',
+    ].join("\n");
+    $("#cg-curl").textContent = [
+      `curl ${o}/v1/chat/completions \\`,
+      '  -H "Authorization: Bearer 你的密钥" \\',
+      '  -H "Content-Type: application/json" \\',
+      `  -d '{"model":"gpt-4o","messages":[{"role":"user","content":"Hello"}]}'`,
+    ].join("\n");
+  })();
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-copy]");
+    if (!btn) return;
+    const text = ($("#" + btn.dataset.copy) || {}).textContent;
+    if (!text) return;
+    navigator.clipboard.writeText(text.trim()).then(
+      () => toast("已复制到剪贴板"), () => toast("复制失败，请手动选择复制"));
+  });
   function parseHash() {
     const [page, query] = location.hash.replace(/^#/, "").split("?");
     return {page: loaders[page] ? page : "", params: new URLSearchParams(query || "")};

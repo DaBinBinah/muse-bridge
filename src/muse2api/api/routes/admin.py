@@ -108,6 +108,27 @@ async def create_account(body: AccountCreate, svc: Services = Depends(get_servic
     return {"account": acc.public(), "missing_cookies": missing_session_cookies(acc.cookies)}
 
 
+@router.get("/accounts/usage")
+async def accounts_usage(svc: Services = Depends(get_services)) -> dict:
+    """Per-account token usage over calendar day/month/quarter/year windows.
+
+    Accounts without logged traffic are returned with zeroed windows so the
+    dashboard can render every card uniformly; ids only seen in the log
+    (deleted accounts) are kept too.
+    """
+    usage = await svc.requests.account_usage()
+    zero = {f"{kind}_{w}": 0 for w in ("day", "month", "quarter", "year")
+            for kind in ("tokens", "requests")}
+    data = []
+    for acc in svc.pool.all():
+        data.append({"account_id": acc.id, **zero, **usage["data"].get(acc.id, {})})
+    known = {a["account_id"] for a in data}
+    for acc_id, row in usage["data"].items():
+        if acc_id not in known:
+            data.append({"account_id": acc_id, **zero, **row})
+    return {"bounds": usage["bounds"], "data": data}
+
+
 @router.post("/accounts/import")
 async def import_accounts(body: AccountsImportRequest,
                           svc: Services = Depends(get_services)) -> dict:

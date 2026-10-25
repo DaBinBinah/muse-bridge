@@ -17,6 +17,7 @@ from ...core.tools import ToolStreamFilter, compose_tool_prompt, parse_tool_call
 from ...drivers.base import ChatRequest, InputImage
 from ...errors import InvalidRequest, Muse2APIError
 from ...services.container import Services
+from ...services.request_log import note_tokens
 from ..deps import get_services, require_api_key
 from ..schemas import ChatCompletionRequest
 
@@ -71,6 +72,7 @@ async def chat_completions(body: ChatCompletionRequest, request: Request,
 
     if not body.stream:
         text = "".join([d async for d in stream])
+        note_tokens(_approx_tokens(prompt_text), _approx_tokens(text))
         message: dict = {"role": "assistant", "content": text}
         finish = "stop"
         if tools_active:
@@ -157,6 +159,7 @@ async def chat_completions(body: ChatCompletionRequest, request: Request,
                     produced += delta
                     yield _sse(chunk({"content": delta}))
                 yield _sse(chunk({}, "stop"))
+            note_tokens(_approx_tokens(prompt_text), _approx_tokens(produced))
             if (body.stream_options or {}).get("include_usage"):
                 usage = {"prompt_tokens": _approx_tokens(prompt_text),
                          "completion_tokens": _approx_tokens(produced)}
