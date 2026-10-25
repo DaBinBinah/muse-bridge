@@ -275,7 +275,9 @@ class BrowserDriver(MuseDriver):
             params = {
                 "name": name,
                 "value": value,
-                "domain": ".muse.ai",
+                # __Host- prefixed cookies are host-only by spec; a dotted domain
+                # would make Chromium drop the setCookie silently.
+                "domain": "muse.ai" if name.startswith("__Host-") else ".muse.ai",
                 "path": "/",
                 "secure": True,
                 # Never hand Chromium a past expiry; it would drop the cookie silently.

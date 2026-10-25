@@ -135,6 +135,19 @@ def test_login_capture_refreshes_same_account(client, admin, fake_browser):
     assert plain["hatch_gw"] == "G2"
 
 
+def test_login_capture_partial_cookies(client, admin, fake_browser):
+    """A fresh muse.ai login only issues hatch_sess + hatch_native_auth_device
+    (gw/vml never appear) — that still captures and creates a working account."""
+    FakeSession.jar = [c for c in FULL if c["name"] in ("hatch_sess", "hatch_native_auth_device")]
+    r = client.post("/admin/accounts/login", headers=admin, json={"label": "fresh-login"})
+    state = _wait_status(client.app.state.services, r.json()["id"], "captured")
+    assert state.missing == []
+    plain = client.get(f"/admin/accounts/{state.account['id']}/cookies",
+                       headers=admin).json()["cookies"]
+    assert plain["hatch_sess"] == "S1"
+    assert plain["hatch_native_auth_device"] == "N1"
+
+
 def test_login_capture_two_different_accounts(client, admin, fake_browser):
     """The multi-account workflow: consecutive logins with different sessions
     each get their own account in the pool."""
@@ -167,7 +180,7 @@ def test_login_capture_cancel(client, admin, fake_browser):
 
 
 def test_login_capture_reports_window_closed(client, admin, fake_browser):
-    FakeSession.jar = [c for c in FULL if c["name"] != "hatch_gw"]
+    FakeSession.jar = [c for c in FULL if c["name"] != "hatch_native_auth_device"]
     FakeSession.fail_get_cookies = True  # the user closed the browser
     r = client.post("/admin/accounts/login", headers=admin, json={})
     state = _wait_status(client.app.state.services, r.json()["id"], "cancelled")

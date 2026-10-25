@@ -19,8 +19,10 @@ NEW_THREAD_URL = f"{SITE}/thread/new"
 SESSION_API = f"{SITE}/api/session"
 VM_WAKE_API = f"{SITE}/api/hatch/vm/wake"
 
-# Cookies that together make up a logged-in session.
-SESSION_COOKIES = ("hatch_sess", "hatch_gw", "hatch_vml", "hatch_native_auth_device")
+# Cookies a logged-in session minimally needs. A fresh muse.ai login only sets
+# hatch_sess + hatch_native_auth_device; hatch_gw / hatch_vml are minted later
+# on some flows and are optional extras (verified live: chat works without them).
+SESSION_COOKIES = ("hatch_sess", "hatch_native_auth_device")
 
 USER_AGENT = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "

@@ -356,7 +356,15 @@ def test_admin_accounts_crud(client, auth, admin):
     assert r.status_code == 200
     acc = r.json()["account"]
     assert acc["cookies"]["hatch_sess"] != "secretvalue123"
-    assert "hatch_vml" in r.json()["missing_cookies"]
+    # gw/vml are optional extras; only the other required cookie is missing
+    assert r.json()["missing_cookies"] == ["hatch_native_auth_device"]
+
+    # the minimal fresh-login set (sess + native_auth_device) counts as complete
+    r = client.post("/admin/accounts", headers=admin, json={"label": "minimal", "cookies": {
+        "hatch_sess": "s", "hatch_native_auth_device": "n"}})
+    assert r.status_code == 200
+    assert r.json()["missing_cookies"] == []
+    client.delete(f"/admin/accounts/{r.json()['account']['id']}", headers=admin)
 
     r = client.patch(f"/admin/accounts/{acc['id']}", headers=admin, json={"enabled": False})
     assert r.json()["account"]["enabled"] is False
