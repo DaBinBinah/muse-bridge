@@ -1,5 +1,10 @@
 """Emulated tool calling (TODO C3): prompt injection, parsing, stream gate and
-the two OpenAI endpoints translating calls back and forth."""
+the two OpenAI endpoints translating calls back and forth.
+
+The taught protocol is the bare-JSON decision-only reply proven against the
+live muse.ai agent ("reply with ONLY this JSON ... only DECIDING"); Hermes
+``<tool_call>`` tag blocks remain accepted by the parser for tolerance.
+"""
 
 from __future__ import annotations
 
@@ -16,16 +21,14 @@ TOOLS = [{"type": "function", "function": {
                    "properties": {"city": {"type": "string"}},
                    "required": ["city"]}}}]
 
-CANNED = ('Let me check.\n<tool_call>\n'
-          '{"name": "get_weather", "arguments": {"city": "Beijing"}}\n'
-          '</tool_call>')
+CANNED = '{"tool_calls":[{"name":"get_weather","arguments":{"city":"Beijing"}}]}'
 
 
-# ---------- unit: parse_tool_calls ----------
+# ---------- unit: parse_tool_calls (taught bare-JSON format) ----------
 
-def test_parse_single_call_with_preamble():
+def test_parse_bare_json_reply():
     content, calls = parse_tool_calls(CANNED)
-    assert content == "Let me check."
+    assert content is None
     assert len(calls) == 1
     call = calls[0]
     assert call["id"].startswith("call_") and call["type"] == "function"
@@ -33,14 +36,41 @@ def test_parse_single_call_with_preamble():
     assert json.loads(call["function"]["arguments"]) == {"city": "Beijing"}
 
 
-def test_parse_only_block_gives_none_content():
+def test_parse_fenced_bare_json_reply():
+    content, calls = parse_tool_calls("```json\n" + CANNED + "\n```")
+    assert content is None and len(calls) == 1
+
+
+def test_parse_bare_json_without_tool_calls_key_passes_through():
+    text = '{"answer": "just data, not a tool call"}'
+    content, calls = parse_tool_calls(text)
+    assert content == text and calls == []
+
+
+def test_parse_bare_parallel_calls():
     content, calls = parse_tool_calls(
-        f'{TOOL_TAG}\n{{"name": "f", "arguments": {{}}}}\n</tool_call>')
+        '{"tool_calls":[{"name":"a","arguments":{}},{"name":"b","arguments":{"x":1}}]}')
     assert content is None
+    assert [c["function"]["name"] for c in calls] == ["a", "b"]
+
+
+# ---------- unit: parse_tool_calls (tag tolerance) ----------
+
+def test_parse_tag_block_with_preamble():
+    text = f"Let me check.\n{TOOL_TAG}\n" \
+           '{"name": "get_weather", "arguments": {"city": "Beijing"}}\n</tool_call>'
+    content, calls = parse_tool_calls(text)
+    assert content == "Let me check."
     assert len(calls) == 1
 
 
-def test_parse_parallel_calls():
+def test_parse_tag_block_gives_none_content():
+    content, calls = parse_tool_calls(
+        f'{TOOL_TAG}\n{{"name": "f", "arguments": {{}}}}\n</tool_call>')
+    assert content is None and len(calls) == 1
+
+
+def test_parse_tag_parallel_calls():
     text = (f'{TOOL_TAG}\n{{"name": "a", "arguments": {{}}}}\n</tool_call>\n'
             f'{TOOL_TAG}\n{{"name": "b", "arguments": {{"x": 1}}}}\n</tool_call>')
     content, calls = parse_tool_calls(text)
@@ -48,25 +78,19 @@ def test_parse_parallel_calls():
     assert [c["function"]["name"] for c in calls] == ["a", "b"]
 
 
-def test_parse_fenced_json_inside_block():
+def test_parse_tag_fenced_json_inside_block():
     text = f'{TOOL_TAG}\n```json\n{{"name": "a", "arguments": {{}}}}\n```\n</tool_call>'
     _, calls = parse_tool_calls(text)
     assert calls and calls[0]["function"]["name"] == "a"
 
 
-def test_parse_tool_calls_wrapper():
-    text = f'{TOOL_TAG}\n{{"tool_calls": [{{"name": "a", "arguments": {{}}}}]}}\n</tool_call>'
-    _, calls = parse_tool_calls(text)
-    assert len(calls) == 1 and calls[0]["function"]["name"] == "a"
-
-
-def test_parse_truncated_block():
+def test_parse_truncated_tag_block_stripped():
     text = f'Checking.{TOOL_TAG}\n{{"name": "a", "arguments": {{"x"'
     content, calls = parse_tool_calls(text)
     assert content == "Checking." and calls == []
 
 
-def test_parse_truncated_block_with_valid_json():
+def test_parse_truncated_tag_block_with_valid_json():
     text = f'{TOOL_TAG}\n{{"name": "a", "arguments": {{}}}}'
     content, calls = parse_tool_calls(text)
     assert content is None and len(calls) == 1
@@ -86,12 +110,13 @@ def test_parse_string_arguments_kept_as_string():
 
 # ---------- unit: ToolStreamFilter ----------
 
-def test_stream_filter_split_tag():
+def test_stream_filter_swallows_bare_json():
     f = ToolStreamFilter()
-    assert f.feed("Answer: 42. <tool") == "Answer: 42. "
-    assert f.feed("_call>\nsecret") == ""
-    assert f.finish() == ""
-    assert f.tagged
+    assert f.feed('{"tool') == ""
+    assert f.feed('_calls": ...') == ""
+    assert f.feed("}") == ""
+    assert f.swallowing
+    assert f.finish() == '{"tool_calls": ...}'
 
 
 def test_stream_filter_passes_clean_text():
@@ -101,19 +126,27 @@ def test_stream_filter_passes_clean_text():
     assert f.finish() == ""
 
 
+def test_stream_filter_leading_whitespace_held_then_plain():
+    f = ToolStreamFilter()
+    assert f.feed("  \n") == ""
+    out = f.feed("plain text")
+    assert out == "  \nplain text"
+
+
+def test_stream_filter_split_tag():
+    f = ToolStreamFilter()
+    assert f.feed("Answer: 42. <tool") == "Answer: 42. "
+    assert f.feed("_call>\nsecret") == ""
+    assert f.swallowing
+    # the swallowed payload is returned by finish(); the route drops it when
+    # the final parse produced calls
+    assert "secret" in f.finish()
+
+
 def test_stream_filter_holds_partial_tag_tail():
     f = ToolStreamFilter()
-    out = f.feed("tail <tool_c")
-    assert out == "tail "
+    assert f.feed("tail <tool_c") == "tail "
     assert f.finish() == "<tool_c"
-
-
-def test_stream_filter_multi_chunk_holdback():
-    f = ToolStreamFilter()
-    assert f.feed("<") == ""
-    assert f.feed("t") == ""
-    assert f.feed("xt") == "<txt"
-    assert f.finish() == ""
 
 
 # ---------- unit: tool_instructions ----------
@@ -121,14 +154,15 @@ def test_stream_filter_multi_chunk_holdback():
 def test_instructions_embed_schema_and_rules():
     text = tool_instructions(TOOLS)
     assert '"get_weather"' in text
-    assert "Decide only" in text
-    assert TOOL_TAG in text
+    assert "only DECIDING" in text
+    assert "do NOT perform the action" in text
+    assert '"tool_calls"' in text
 
 
 @pytest.mark.parametrize("choice, needle", [
-    ("required", "MUST call at least one tool"),
+    ("required", "MUST be answered with the tool_calls JSON"),
     ({"type": "function", "function": {"name": "get_weather"}},
-     'MUST call the function "get_weather"'),
+     'tool_calls JSON calling the function "get_weather"'),
     ("auto", None),
 ])
 def test_instructions_tool_choice(choice, needle):
@@ -185,7 +219,7 @@ def test_chat_tools_non_stream(client, auth, monkeypatch):
     choice = r.json()["choices"][0]
     assert choice["finish_reason"] == "tool_calls"
     msg = choice["message"]
-    assert msg["content"] == "Let me check."
+    assert msg["content"] is None
     tc = msg["tool_calls"][0]
     assert tc["function"]["name"] == "get_weather"
     assert json.loads(tc["function"]["arguments"]) == {"city": "Beijing"}
@@ -197,10 +231,10 @@ def test_chat_tools_prompt_injection(client, auth, monkeypatch):
         "messages": [{"role": "user", "content": "weather?"}], "tools": TOOLS})
     assert r.status_code == 200
     prompt = seen[0].prompt
-    assert prompt.startswith("# Tool use")
+    # user text first, instructions at the end (ordered for the live agent)
+    assert prompt.index("weather?") < prompt.index("If the request needs a tool")
+    assert "only DECIDING" in prompt
     assert '"get_weather"' in prompt
-    assert "Decide only" in prompt
-    assert "weather?" in prompt
 
 
 def test_chat_tools_stream(client, auth, monkeypatch):
@@ -214,8 +248,7 @@ def test_chat_tools_stream(client, auth, monkeypatch):
     assert lines[-1] == "[DONE]"
     deltas = [c["choices"][0]["delta"] for c in chunks if c["choices"]]
     text = "".join(d.get("content", "") for d in deltas)
-    assert "<tool_call>" not in text  # no raw marker ever leaks
-    assert text.strip() == "Let me check."
+    assert text == ""  # the bare JSON never leaks as content
     call_deltas = [d["tool_calls"] for d in deltas if "tool_calls" in d]
     assert len(call_deltas) == 1
     assert call_deltas[0][0]["function"]["name"] == "get_weather"
@@ -239,7 +272,21 @@ def test_chat_tools_plain_reply_stream_untouched(client, auth, monkeypatch):
     assert chunks[-1]["choices"][0]["finish_reason"] == "stop"
 
 
-def test_chat_tools_disabled_flag_passes_marker_through(client, auth, monkeypatch):
+def test_chat_tools_swallowed_non_tool_json_recovered(client, auth, monkeypatch):
+    _stub_chat(client, monkeypatch, '{"answer": "plain json data"}')
+    with client.stream("POST", "/v1/chat/completions", headers=auth, json={
+        "messages": [{"role": "user", "content": "hi"}],
+        "tools": TOOLS, "stream": True,
+    }) as r:
+        lines = [ln[6:] for ln in r.iter_lines() if ln.startswith("data: ")]
+    chunks = [json.loads(x) for x in lines[:-1]]
+    text = "".join(c["choices"][0]["delta"].get("content", "")
+                   for c in chunks if c["choices"])
+    assert text == '{"answer": "plain json data"}'  # flushed, not lost
+    assert chunks[-1]["choices"][0]["finish_reason"] == "stop"
+
+
+def test_chat_tools_disabled_flag_passes_json_through(client, auth, monkeypatch):
     monkeypatch.setattr(client.app.state.services.settings, "tool_emulation", False)
     _stub_chat(client, monkeypatch, CANNED)
     r = client.post("/v1/chat/completions", headers=auth, json={
@@ -247,7 +294,7 @@ def test_chat_tools_disabled_flag_passes_marker_through(client, auth, monkeypatc
     assert r.status_code == 200
     choice = r.json()["choices"][0]
     assert choice["finish_reason"] == "stop"
-    assert TOOL_TAG in choice["message"]["content"]
+    assert '"tool_calls"' in choice["message"]["content"]
 
 
 def test_chat_tool_choice_none_skips_injection(client, auth, monkeypatch):
@@ -256,7 +303,7 @@ def test_chat_tool_choice_none_skips_injection(client, auth, monkeypatch):
         "messages": [{"role": "user", "content": "weather?"}],
         "tools": TOOLS, "tool_choice": "none"})
     assert r.status_code == 200
-    assert not seen[0].prompt.startswith("# Tool use")
+    assert "If the request needs a tool" not in seen[0].prompt
 
 
 def test_chat_history_roundtrip(client, auth, monkeypatch):
@@ -273,7 +320,8 @@ def test_chat_history_roundtrip(client, auth, monkeypatch):
         "tools": TOOLS})
     assert r.status_code == 200
     prompt = seen[0].prompt
-    assert "[Tool]" in prompt and "Sunny, 24C" in prompt
+    assert "Tool result from the caller" in prompt and "Sunny, 24C" in prompt
+    assert '"get_weather"' in prompt  # the decided call is narrated as JSON
 
 
 # ---------- integration: /v1/responses ----------
@@ -290,8 +338,6 @@ def test_responses_tools_non_stream(client, auth, monkeypatch):
     assert fc[0]["name"] == "get_weather"
     assert json.loads(fc[0]["arguments"]) == {"city": "Beijing"}
     assert fc[0]["call_id"].startswith("call_")
-    msgs = [i for i in body["output"] if i["type"] == "message"]
-    assert msgs and msgs[0]["content"][0]["text"] == "Let me check."
 
 
 def test_responses_accepts_function_call_history(client, auth, monkeypatch):
@@ -307,7 +353,7 @@ def test_responses_accepts_function_call_history(client, auth, monkeypatch):
         "tools": TOOLS})
     assert r.status_code == 200
     prompt = seen[0].prompt
-    assert '"get_weather"' in prompt and "Sunny, 24C" in prompt
+    assert "Tool result from the caller" in prompt and "Sunny, 24C" in prompt
 
 
 def test_responses_tools_stream(client, auth, monkeypatch):
@@ -326,5 +372,4 @@ def test_responses_tools_stream(client, auth, monkeypatch):
     assert len(fc) == 1 and fc[0]["name"] == "get_weather"
     text = "".join(e["delta"] for e in events
                    if e["type"] == "response.output_text.delta")
-    assert "<tool_call>" not in text
-    assert text.strip() == "Let me check."
+    assert text == ""  # bare JSON reply: nothing to stream as text

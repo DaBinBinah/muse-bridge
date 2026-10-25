@@ -13,7 +13,7 @@ from fastapi.responses import StreamingResponse
 from ...core.media import load_image_ref
 from ...core.models import resolve_model
 from ...core.prompt import flatten_messages, message_turns
-from ...core.tools import ToolStreamFilter, parse_tool_calls, tool_instructions
+from ...core.tools import ToolStreamFilter, compose_tool_prompt, parse_tool_calls
 from ...drivers.base import ChatRequest, InputImage
 from ...errors import InvalidRequest, Muse2APIError
 from ...services.container import Services
@@ -42,12 +42,14 @@ async def chat_completions(body: ChatCompletionRequest, request: Request,
     flat = flatten_messages([m.model_dump() for m in body.messages])
     if not flat.text and not flat.images:
         raise InvalidRequest("messages contain no text or images")
+    turns = message_turns([m.model_dump() for m in body.messages])
 
-    # Emulated tool calling (C3): describe the tools in the prompt and parse the
-    # marker format back out of the reply (see core/tools.py).
+    # Emulated tool calling (C3): narrate the tool request headerless and parse
+    # the bare-JSON decision reply back into tool_calls (see core/tools.py).
+    # Roleplay transcript headers make the live Muse agent distrust the prompt.
     tools_active = bool(svc.settings.tool_emulation and body.tools
                         and body.tool_choice != "none")
-    prompt_text = ((tool_instructions(body.tools, body.tool_choice) + "\n\n" + flat.text)
+    prompt_text = (compose_tool_prompt(turns, body.tools, body.tool_choice)
                    if tools_active else flat.text)
 
     images = [InputImage(*(await load_image_ref(ref))) for ref in flat.images]
@@ -59,7 +61,7 @@ async def chat_completions(body: ChatCompletionRequest, request: Request,
         timeout=svc.settings.chat_timeout,
         first_token_timeout=svc.settings.first_token_timeout,
         conversation_hint=body.user,
-        turns=message_turns([m.model_dump() for m in body.messages]),
+        turns=turns,
         cancel=cancel,
     )
     completion_id = "chatcmpl-" + uuid.uuid4().hex[:24]
@@ -126,26 +128,28 @@ async def chat_completions(body: ChatCompletionRequest, request: Request,
                         pending.cancel()
             produced = first or ""
             if tools_active:
-                # Stream through the marker gate: text is passed through (with a
-                # partial-tag holdback) until a <tool_call> appears, then the
-                # rest is swallowed and returned as tool_calls deltas instead.
+                # Stream through the reply gate: a bare-JSON tool reply is
+                # swallowed whole (and returned as tool_calls deltas); anything
+                # else passes through. Pending text is only flushed when the
+                # final parse finds no calls.
                 filt = ToolStreamFilter()
                 out = filt.feed(produced)
-                yield _sse(chunk({"role": "assistant", "content": out}))
+                if out:
+                    yield _sse(chunk({"role": "assistant", "content": out}))
                 async for delta in stream:
                     produced += delta
                     out = filt.feed(delta)
                     if out:
                         yield _sse(chunk({"content": out}))
-                out = filt.finish()
-                if out:
-                    yield _sse(chunk({"content": out}))
+                pending = filt.finish()
                 _, calls = parse_tool_calls(produced)
                 if calls:
                     for i, call in enumerate(calls):
                         yield _sse(chunk({"tool_calls": [dict(call, index=i)]}))
                     yield _sse(chunk({}, "tool_calls"))
                 else:
+                    if pending:
+                        yield _sse(chunk({"content": pending}))
                     yield _sse(chunk({}, "stop"))
             else:
                 yield _sse(chunk({"role": "assistant", "content": produced}))

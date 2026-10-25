@@ -27,7 +27,7 @@ from pydantic import BaseModel, ConfigDict
 from ...core.media import load_image_ref
 from ...core.models import resolve_model
 from ...core.prompt import flatten_messages, message_turns
-from ...core.tools import ToolStreamFilter, parse_tool_calls, tool_instructions
+from ...core.tools import ToolStreamFilter, compose_tool_prompt, parse_tool_calls
 from ...drivers.base import ChatRequest, InputImage
 from ...errors import InvalidRequest, Muse2APIError
 from ...services.container import Services
@@ -141,13 +141,15 @@ async def create_response(body: ResponseRequest, request: Request,
     flat = flatten_messages(messages)
     if not flat.text and not flat.images:
         raise InvalidRequest("input contains no text or images")
+    turns = message_turns(messages)
 
-    # Emulated tool calling (C3), same as chat completions.
+    # Emulated tool calling (C3), same as chat completions: headerless narration.
     req_tools = getattr(body, "tools", None) or []
     tools_active = (bool(svc.settings.tool_emulation and req_tools)
                     and getattr(body, "tool_choice", None) != "none")
-    prompt_text = ((tool_instructions(req_tools, getattr(body, "tool_choice", None))
-                    + "\n\n" + flat.text) if tools_active else flat.text)
+    prompt_text = (compose_tool_prompt(turns, req_tools,
+                                       getattr(body, "tool_choice", None))
+                   if tools_active else flat.text)
 
     images = [InputImage(*(await load_image_ref(ref))) for ref in flat.images]
     cancel = asyncio.Event()
@@ -158,7 +160,7 @@ async def create_response(body: ResponseRequest, request: Request,
         timeout=svc.settings.chat_timeout,
         first_token_timeout=svc.settings.first_token_timeout,
         conversation_hint=body.user,
-        turns=message_turns(messages),
+        turns=turns,
         cancel=cancel,
     )
     stream = svc.gateway.chat_stream(req)
@@ -247,16 +249,20 @@ async def create_response(body: ResponseRequest, request: Request,
                     yield _sse(delta_event(out))
                     seq += 1
             if filt:
-                out = filt.finish()
-                if out:
-                    yield _sse(delta_event(out))
-                    seq += 1
+                pending = filt.finish()
+            else:
+                pending = ""
 
             content, calls = (parse_tool_calls(produced) if tools_active else (produced, []))
+            if not calls and pending:
+                # A swallowed payload that did not parse into calls is still
+                # legitimate content (e.g. the model just answered in JSON).
+                yield _sse(delta_event(pending))
+                seq += 1
             final_output: list[dict] = []
             if calls:
-                # Close the text message item first; it may carry a short preamble
-                # before the tool call blocks.
+                # Close the text message item first; with the bare-JSON protocol
+                # it is usually empty.
                 yield _sse({"type": "response.output_item.done", "sequence_number": seq,
                             "output_index": 0, "item": _message_item(msg_id, content or "")})
                 seq += 1
