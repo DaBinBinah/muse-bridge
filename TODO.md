@@ -27,6 +27,7 @@ Priorities: **P0** must be done first · **P1** core feature · **P2** better ex
 | C4 | Streaming heartbeats to avoid client timeouts | P2 | `api/routes/chat.py` | | Done |
 | D1 | Support more cookie import formats | P1 | `api/routes/admin.py` | | Done |
 | D2 | Cookie import browser extension | P2 | `extension/` (new) | | Not started |
+| D5 | In-dashboard browser login with auto cookie capture | P1 | `accounts/login_capture.py` | | Done (v1.6.0: visible throwaway Chromium + CDP `Network.getCookies`, HttpOnly included; same-hatch_sess re-login refreshes the existing account; window-open/waiting/cancel verified live, full login flow needs a real account) |
 | D3 | Web admin console | P2 | `src/muse2api/web/` | | Partial (dashboard with overview, accounts incl. cookie-import form, keys, requests done; task list, media library, API tester open) |
 | D4 | SQLite / Redis storage backends | P3 | `accounts/store.py` | | Not started |
 | E1 | Automatic media cleanup | P2 | `core/media.py` | | Done |

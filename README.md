@@ -12,7 +12,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.10%2B-3478F6?logo=python&logoColor=white" alt="Python">
   <img src="https://img.shields.io/badge/License-MIT-3478F6" alt="License">
-  <img src="https://img.shields.io/badge/version-1.5.0-3478F6" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.6.0-3478F6" alt="Version">
   <img src="https://img.shields.io/badge/API-OpenAI%20Compatible-0F8B72" alt="OpenAI Compatible">
 </p>
 
@@ -77,6 +77,7 @@ MuseBridge 是一个面向开发者的 Muse AI API 反向代理项目。
 - **Codex CLI 支持**：支持将 Muse AI API 接入 Codex CLI 客户端。
 - **工具调用（模拟）**：通过提示词模拟 OpenAI function calling——请求中的 `tools` 注入提示词，模型按约定格式输出调用，再翻译回标准 `tool_calls`。尽力而为，可用 `MUSE2API_TOOL_EMULATION=false` 关闭。
 - **账号管理**：通过 Web 管理面板管理已配置的账号。
+- **浏览器登录添加账号**：面板内一键打开登录窗口，登录 muse.ai 后自动抓取全部会话 Cookie（含 HttpOnly 项，如 hatch_gw）并入池；同一账号重新登录会自动刷新原账号，无需再从开发者工具复制。需服务器有图形界面。
 - **API 密钥管理**：管理代理服务的 API 访问密钥。
 - **请求监控**：查看请求数量、错误率和响应延迟等统计数据。
 - **模型使用统计**：查看已有的模型请求统计信息。
@@ -120,7 +121,7 @@ MuseBridge 提供 Web 管理面板（默认 `http://127.0.0.1:18610/dashboard`�
 | 模块 | 说明 |
 |---|---|
 | 总览 | 请求量、错误率、响应延迟、按模型统计等 |
-| 账号 | 管理 muse.ai 账号（添加 / 编辑 Cookie、启用停用、续期） |
+| 账号 | 管理 muse.ai 账号（浏览器登录自动获取、添加 / 编辑 Cookie、启用停用、续期） |
 | API 密钥 | 管理客户端调用密钥 |
 | 请求记录 | 查看已有请求日志 |
 
@@ -147,7 +148,7 @@ python -m muse2api        # 默认监听 http://127.0.0.1:18610
 
 启动后访问 [http://127.0.0.1:18610/dashboard](http://127.0.0.1:18610/dashboard) 进入管理面板。首次启动会自动生成 API Key 并保存在 `data/api_key`，同时作为管理面板密钥。
 
-**添加 muse.ai 账号**：在浏览器登录 muse.ai 后，从开发者工具中获取 `hatch_sess`、`hatch_gw`、`hatch_vml`、`hatch_native_auth_device` 四个 Cookie。推荐在管理面板「账号」页点击**添加账号**，逐项填入或整段粘贴 `Cookie` 请求头；也可以通过管理 API 导入：
+**添加 muse.ai 账号（推荐）**：管理面板「账号」页点击**浏览器登录**，在弹出的窗口中完成登录，Cookie 会自动抓取并入池。也可以手动添加：在浏览器登录 muse.ai 后，从开发者工具中获取 `hatch_sess`、`hatch_gw`、`hatch_vml`、`hatch_native_auth_device` 四个 Cookie，在管理面板「账号」页点击**添加账号**逐项填入或整段粘贴 `Cookie` 请求头；还可以通过管理 API 导入：
 
 ```bash
 curl http://127.0.0.1:18610/admin/accounts \
@@ -203,6 +204,7 @@ MuseBridge aims to simplify the integration of Muse AI with developer tools, inc
 - **Codex CLI Support** — Connect Muse AI API access to the Codex CLI client.
 - **Emulated Tool Calling** — OpenAI `tools` are described in the prompt and the marker-formatted reply is translated back into standard `tool_calls`. Best-effort (muse.ai has no native function calling); disable with `MUSE2API_TOOL_EMULATION=false`.
 - **Account Management** — Manage configured accounts through a web dashboard.
+- **In-Dashboard Browser Login** — open a login window from the dashboard; after signing in to muse.ai, all session cookies (HttpOnly included, e.g. `hatch_gw`) are captured automatically and the account is created or refreshed. No more copying cookies from devtools. Requires a GUI on the server.
 - **API Key Management** — Manage API keys used to access the proxy.
 - **Request Monitoring** — View request counts, error rates, and response latency.
 - **Model Usage Statistics** — Review available model usage statistics.
@@ -259,7 +261,7 @@ python -m muse2api        # listens on http://127.0.0.1:18610 by default
 
 Open [http://127.0.0.1:18610/dashboard](http://127.0.0.1:18610/dashboard) for the management dashboard. On first start an API key is generated and stored in `data/api_key`; it also acts as the dashboard admin key.
 
-**Add a muse.ai account**: after signing in to muse.ai in your browser, collect the `hatch_sess`, `hatch_gw`, `hatch_vml`, and `hatch_native_auth_device` cookies from the developer tools. The easiest way is the **Add account** button on the dashboard's Accounts page — fill in each value or paste the whole `Cookie` header. You can also import via the admin API:
+**Add a muse.ai account (recommended)**: click **Browser login** on the dashboard's Accounts page and sign in inside the window that opens — the cookies are captured automatically. Alternatively, collect the `hatch_sess`, `hatch_gw`, `hatch_vml`, and `hatch_native_auth_device` cookies from the developer tools of a signed-in browser and use the **Add account** button — fill in each value or paste the whole `Cookie` header. You can also import via the admin API:
 
 ```bash
 curl http://127.0.0.1:18610/admin/accounts \

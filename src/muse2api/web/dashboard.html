@@ -344,6 +344,7 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
   <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v4.5h-4.5"/></symbol>
   <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
   <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></symbol>
+  <symbol id="i-screen" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></symbol>
   <symbol id="i-xbrand" viewBox="0 0 24 24"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.45-6.231zm-1.161 17.52h1.833L7.084 4.126H5.117l11.966 15.644z"/></symbol>
   <symbol id="i-github" viewBox="0 0 24 24"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></symbol>
 </svg>
@@ -440,6 +441,7 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
           <div class="grow"><h1>账号</h1><div class="sub">账号池中的 muse.ai 账号。配额用尽的账号会在冷却结束后自动恢复。</div></div>
           <div class="tools">
             <button class="btn primary big" id="acc-new" type="button"><svg class="i"><use href="#i-plus"/></svg>添加账号</button>
+            <button class="btn primary big" id="acc-login" type="button"><svg class="i"><use href="#i-screen"/></svg>浏览器登录</button>
             <button class="btn" id="acc-refresh" type="button"><svg class="i"><use href="#i-refresh"/></svg>刷新</button>
           </div>
         </div>
@@ -952,6 +954,69 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
       });
     } else toast("已添加账号");
   }));
+
+  // ---- in-dashboard browser login: auto cookie capture ----
+  $("#acc-login").addEventListener("click", () => guarded(async () => {
+    const f = await modal({
+      title: "浏览器登录添加账号",
+      body: `<p class="muted" style="margin:0">点击开始后，服务器会打开一个 Chrome 窗口并进入 muse.ai。在窗口里用任意方式完成登录，Cookie（包括开发者工具里看不到的 HttpOnly 项，如 hatch_gw）会自动抓取并入池，无需再手动复制。同一账号重新登录会自动刷新原账号的 Cookie。</p>
+        <label class="f">备注 <span class="hint">选填——例如 acc1、主力号</span><input type="text" id="lc-label" maxlength="100" autocomplete="off"></label>
+        <p class="muted" style="margin:0">需在有图形界面的环境运行服务；无桌面的服务器请改用「添加账号」粘贴 Cookie。</p>`,
+      actions: [{label: "取消", value: null},
+        {label: "打开登录窗口", primary: true, cls: "primary",
+         collect: () => ({label: $("#lc-label").value.trim()})}],
+    });
+    if (!f) return;
+    await runLoginCapture(f.label);
+  }));
+
+  async function runLoginCapture(label) {
+    let info;
+    try {
+      info = await api("/admin/accounts/login", {method: "POST", body: {label}});
+    } catch (e) { toast(e.message); return; }
+    let cancelled = false, terminal = null;
+    const dlg = modal({
+      title: "浏览器登录进行中",
+      body: `<p class="muted" style="margin:0">已打开登录窗口，请在其完成登录；登录成功后窗口会自动关闭，本页自动继续。</p>
+             <div class="warnbox" id="lc-status" style="margin-top:8px">等待登录完成…</div>`,
+      actions: [{label: "取消登录", value: "cancel", cls: "danger"}],
+    }).then((v) => { if (v === "cancel") cancelled = true; return v; });
+    (async () => {
+      while (!cancelled && !terminal) {
+        await new Promise((r) => setTimeout(r, 1500));
+        if (cancelled || terminal) return;
+        try {
+          const st = await api(`/admin/accounts/login/${encodeURIComponent(info.id)}`);
+          const el = $("#lc-status");
+          if (el && st.status === "waiting")
+            el.textContent = `等待登录完成…还缺：${(st.missing || []).join("、")}`;
+          if (st.status !== "waiting") {
+            terminal = st;
+            const b = $("#modal-actions button");
+            if (b) { b.textContent = "完成"; b.classList.remove("danger"); b.classList.add("primary"); b.click(); }
+          }
+        } catch { /* transient poll failure — keep trying */ }
+      }
+    })();
+    await dlg;
+    if (cancelled) {
+      await api(`/admin/accounts/login/${encodeURIComponent(info.id)}`, {method: "DELETE"}).catch(() => {});
+      toast("已取消浏览器登录");
+      return;
+    }
+    const st = terminal || {};
+    await loadAccountsPage();
+    if (st.status === "captured") {
+      toast(st.created_account === false ? "已自动刷新原账号的 Cookie" : "已自动添加账号");
+    } else {
+      await modal({
+        title: "浏览器登录未完成",
+        body: `<div class="warnbox">${esc(st.error || st.status || "未知状态")}</div>`,
+        actions: [{label: "知道了", value: null, primary: true}],
+      });
+    }
+  }
 
   // "Load current values" in the edit dialog puts the raw cookie header into the paste
   // box; typing into a per-cookie field afterwards clears it so the fields take over.

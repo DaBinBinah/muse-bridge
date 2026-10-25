@@ -13,13 +13,21 @@ from fastapi import APIRouter, Depends, Query
 
 from ... import __version__
 from ...accounts.keepalive import renew_account
+from ...accounts.login_capture import LoginCaptureError
 from ...accounts.model import Account, AccountStatus
 from ...auth.keys import ApiKey
 from ...errors import InvalidRequest, Muse2APIError, NotFound
 from ...services.container import Services
 from ...upstream.muse import missing_session_cookies
 from ..deps import get_services, require_admin_key
-from ..schemas import AccountCreate, AccountsImportRequest, AccountUpdate, KeyCreate, KeyUpdate
+from ..schemas import (
+    AccountCreate,
+    AccountsImportRequest,
+    AccountUpdate,
+    KeyCreate,
+    KeyUpdate,
+    LoginCaptureStart,
+)
 
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_admin_key)])
 
@@ -115,6 +123,36 @@ async def import_accounts(body: AccountsImportRequest,
         results.append({"index": i, "ok": True, "account": acc.public(),
                         "missing_cookies": missing_session_cookies(acc.cookies)})
     return {"data": results}
+
+
+# ---- in-dashboard browser login (auto cookie capture) ----
+
+@router.post("/accounts/login")
+async def start_login_capture(body: LoginCaptureStart,
+                              svc: Services = Depends(get_services)) -> dict:
+    """Open a visible Chromium window on the server; the captured muse.ai cookies
+    become a new account (or refresh an existing one) once the user logs in."""
+    try:
+        return await svc.login.start(body.label.strip(), body.timeout)
+    except LoginCaptureError as e:
+        raise InvalidRequest(str(e)) from None
+
+
+@router.get("/accounts/login/{session_id}")
+async def login_capture_status(session_id: str,
+                               svc: Services = Depends(get_services)) -> dict:
+    if (state := svc.login.get(session_id)) is None:
+        raise NotFound(f"login session '{session_id}' not found")
+    return state.info()
+
+
+@router.delete("/accounts/login/{session_id}")
+async def cancel_login_capture(session_id: str,
+                               svc: Services = Depends(get_services)) -> dict:
+    try:
+        return (await svc.login.cancel(session_id)).info()
+    except KeyError:
+        raise NotFound(f"login session '{session_id}' not found") from None
 
 
 @router.patch("/accounts/{account_id}")

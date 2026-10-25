@@ -84,6 +84,13 @@ class AccountUpdate(BaseModel):
     cookie_expires: dict[str, int] | None = None
 
 
+class LoginCaptureStart(BaseModel):
+    """Open a visible login window on the server and capture the muse.ai cookies."""
+    label: str = Field(default="", max_length=100)
+    timeout: float = Field(default=300, ge=30, le=900,
+                           description="Seconds to wait for the user to finish logging in.")
+
+
 class KeyCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     note: str = Field(default="", max_length=500)

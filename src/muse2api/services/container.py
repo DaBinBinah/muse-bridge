@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from ..accounts.login_capture import LoginCaptureManager
 from ..accounts.pool import AccountPool
 from ..accounts.store import JsonAccountStore
 from ..auth.keys import KeyStore
@@ -28,6 +29,7 @@ class Services:
     matting: Matting
     keys: KeyStore
     requests: RequestLog
+    login: LoginCaptureManager
 
     @classmethod
     def build(cls, settings: Settings, driver: MuseDriver | None = None) -> Services:
@@ -59,4 +61,5 @@ class Services:
             matting=Matting(settings.matting_model),
             keys=KeyStore(settings.keys_file),
             requests=requests,
+            login=LoginCaptureManager(settings, pool),
         )
