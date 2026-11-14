@@ -7,8 +7,9 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Cdefs%3E%3ClinearGradient id=%27g%27 x1=%270%27 y1=%270%27 x2=%271%27 y2=%271%27%3E%3Cstop offset=%270%27 stop-color=%27%2372B7FF%27/%3E%3Cstop offset=%271%27 stop-color=%27%232563EB%27/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width=%2732%27 height=%2732%27 rx=%278%27 fill=%27url(%23g)%27/%3E%3Cpath d=%27M8.5 23V12C12 18.8 20 18.8 23.5 12V23%27 fill=%27none%27 stroke=%27%23fff%27 stroke-width=%273%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27/%3E%3C/svg%3E">
 <title>MuseBridge 控制台</title>
 <script>
-  // Apply the saved theme before first paint.
+  // Apply the saved theme and lang before first paint.
   try { const t = localStorage.getItem("muse2api.theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch {}
+  try { const l = localStorage.getItem("muse2api.lang"); if (l) document.documentElement.lang = l === "en" ? "en" : "zh-CN"; } catch {}
 </script>
 <style>
 :root {
@@ -98,6 +99,10 @@ svg.i { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor;
 .themes button { background: none; border: 0; color: var(--side-muted); padding: 4px 0; border-radius: 5px; cursor: pointer; display: grid; place-items: center; }
 .themes button:hover { color: var(--side-text); }
 .themes button[aria-pressed="true"] { background: var(--panel); color: var(--accent); box-shadow: 0 1px 2px rgba(23, 43, 77, .15); }
+.lang-switch { display: grid; grid-template-columns: 1fr 1fr; background: var(--side-2); border: 1px solid var(--side-border); border-radius: 7px; padding: 2px; }
+.lang-switch button { background: none; border: 0; color: var(--side-muted); padding: 3px 0; border-radius: 5px; cursor: pointer; font-size: 11.5px; font-weight: 600; text-align: center; }
+.lang-switch button:hover { color: var(--side-text); }
+.lang-switch button[aria-pressed="true"] { background: var(--panel); color: var(--accent); box-shadow: 0 1px 2px rgba(23, 43, 77, .15); }
 .side .logout { display: flex; align-items: center; gap: 9px; background: none; border: 0; color: var(--side-text); padding: 7px 10px; border-radius: 7px; cursor: pointer; text-align: left; }
 .side .logout:hover { background: var(--side-2); color: var(--accent); }
 .dev-card { display: flex; align-items: center; gap: 8px; padding: 7px 9px; border-radius: 10px; background: var(--panel); border: 1px solid var(--side-border); }
@@ -364,48 +369,58 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
 <!-- login screen -->
 <div class="login" id="login" hidden>
   <div class="login-card">
-    <div class="wordmark"><span class="glyph" aria-hidden="true"><svg viewBox="0 0 32 32" width="17" height="17" fill="none"><path d="M8.5 23V12C12 18.8 20 18.8 23.5 12V23" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span>MuseBridge<small>管理控制台</small></span></div>
-    <h1>登录</h1>
-    <p>输入管理员密钥（<span class="mono">MUSE2API_ADMIN_KEY</span>）。密钥会保存在此浏览器的本地存储中。</p>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+      <div class="wordmark"><span class="glyph" aria-hidden="true"><svg viewBox="0 0 32 32" width="17" height="17" fill="none"><path d="M8.5 23V12C12 18.8 20 18.8 23.5 12V23" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span>MuseBridge<small data-i18n="管理控制台">管理控制台</small></span></div>
+      <div class="lang-switch" role="group" aria-label="Language" style="width: 86px;">
+        <button type="button" data-lang="zh" aria-pressed="true">中文</button>
+        <button type="button" data-lang="en" aria-pressed="false">EN</button>
+      </div>
+    </div>
+    <h1 data-i18n="登录">登录</h1>
+    <p data-i18n-html="login-desc">输入管理员密钥（<span class="mono">MUSE2API_ADMIN_KEY</span>）。密钥会保存在此浏览器的本地存储中。</p>
     <form id="login-form" autocomplete="on">
       <input type="text" name="username" value="admin" autocomplete="username" hidden>
-      <label class="f">管理员密钥<input type="password" id="login-key" autocomplete="current-password" required></label>
+      <label class="f"><span data-i18n="管理员密钥">管理员密钥</span><input type="password" id="login-key" autocomplete="current-password" required></label>
       <div class="errbox" id="login-err" hidden></div>
-      <button class="btn primary" type="submit" id="login-btn">登录</button>
+      <button class="btn primary" type="submit" id="login-btn" data-i18n="登录">登录</button>
     </form>
   </div>
 </div>
 
 <div class="app" id="app" hidden>
-  <aside class="side" id="side" aria-label="导航">
+  <aside class="side" id="side" data-i18n-aria="导航" aria-label="导航">
     <div class="wordmark"><span class="glyph" aria-hidden="true"><svg viewBox="0 0 32 32" width="17" height="17" fill="none"><path d="M8.5 23V12C12 18.8 20 18.8 23.5 12V23" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span>MuseBridge<small id="version">admin</small></span></div>
     <div class="health" id="health" role="status" aria-live="polite">
       <span class="pulse" id="health-dot"></span><b id="health-text">正在检查…</b><small id="health-sub">&nbsp;</small>
     </div>
     <nav>
-      <div class="navlabel">管理</div>
-      <a href="#overview" data-page="overview"><svg class="i"><use href="#i-overview"/></svg>总览</a>
-      <a href="#accounts" data-page="accounts"><svg class="i"><use href="#i-accounts"/></svg>账号<span class="count" id="nav-accounts"></span></a>
-      <a href="#keys" data-page="keys"><svg class="i"><use href="#i-keys"/></svg>API 密钥<span class="count" id="nav-keys"></span></a>
-      <a href="#requests" data-page="requests"><svg class="i"><use href="#i-requests"/></svg>请求记录</a>
+      <div class="navlabel" data-i18n="管理">管理</div>
+      <a href="#overview" data-page="overview"><svg class="i"><use href="#i-overview"/></svg><span data-i18n="总览">总览</span></a>
+      <a href="#accounts" data-page="accounts"><svg class="i"><use href="#i-accounts"/></svg><span data-i18n="账号">账号</span><span class="count" id="nav-accounts"></span></a>
+      <a href="#keys" data-page="keys"><svg class="i"><use href="#i-keys"/></svg><span data-i18n="API 密钥">API 密钥</span><span class="count" id="nav-keys"></span></a>
+      <a href="#requests" data-page="requests"><svg class="i"><use href="#i-requests"/></svg><span data-i18n="请求记录">请求记录</span></a>
     </nav>
     <div class="side-foot">
       <div class="dev-card">
         <a class="dev-id" href="https://x.com/yedabinbinah" target="_blank" rel="noopener noreferrer" title="X 主页">
           <span class="dev-avatar" aria-hidden="true">D</span>
-          <span class="dev-meta"><b>DaBin.Binah</b><small>开发者</small></span>
+          <span class="dev-meta"><b>DaBin.Binah</b><small data-i18n="开发者">开发者</small></span>
         </a>
         <span class="dev-links">
           <a href="https://x.com/yedabinbinah" target="_blank" rel="noopener noreferrer" aria-label="X 主页" title="X 主页"><svg class="b" viewBox="0 0 24 24"><use href="#i-xbrand"/></svg></a>
           <a href="https://github.com/DaBinBinah/muse-bridge" target="_blank" rel="noopener noreferrer" aria-label="GitHub 仓库" title="GitHub 仓库"><svg class="b" viewBox="0 0 24 24"><use href="#i-github"/></svg></a>
         </span>
       </div>
+      <div class="lang-switch" role="group" aria-label="Language / 语言" style="margin-bottom: 6px;">
+        <button type="button" data-lang="zh" aria-pressed="true">中文</button>
+        <button type="button" data-lang="en" aria-pressed="false">English</button>
+      </div>
       <div class="themes" role="group" aria-label="界面主题">
         <button type="button" data-theme="auto" title="跟随系统" aria-label="跟随系统"><svg class="i"><use href="#i-auto"/></svg></button>
         <button type="button" data-theme="light" title="浅色" aria-label="浅色"><svg class="i"><use href="#i-sun"/></svg></button>
         <button type="button" data-theme="dark" title="深色" aria-label="深色"><svg class="i"><use href="#i-moon"/></svg></button>
       </div>
-      <button type="button" class="logout" id="signout"><svg class="i"><use href="#i-logout"/></svg>退出登录</button>
+      <button type="button" class="logout" id="signout"><svg class="i"><use href="#i-logout"/></svg><span data-i18n="退出登录">退出登录</span></button>
     </div>
   </aside>
   <div class="scrim" id="scrim"></div>
@@ -421,40 +436,40 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
       <!-- overview -->
       <section class="page" id="page-overview" hidden>
         <div class="page-head">
-          <div class="grow"><h1>总览</h1><div class="sub"><span class="mono">/v1/*</span> 流量统计，不含任务轮询请求。</div></div>
+          <div class="grow"><h1 data-i18n="总览">总览</h1><div class="sub" data-i18n-html="ov-sub"><span class="mono">/v1/*</span> 流量统计，不含任务轮询请求。</div></div>
           <div class="tools">
             <div class="seg" id="window" role="group" aria-label="时间范围">
               <button type="button" data-w="1h" aria-pressed="false">1h</button>
               <button type="button" data-w="24h" aria-pressed="true">24h</button>
               <button type="button" data-w="7d" aria-pressed="false">7d</button>
             </div>
-            <button class="btn" id="ov-refresh" type="button"><svg class="i"><use href="#i-refresh"/></svg>刷新</button>
+            <button class="btn" id="ov-refresh" type="button"><svg class="i"><use href="#i-refresh"/></svg><span data-i18n="刷新">刷新</span></button>
           </div>
         </div>
         <div class="tiles" id="tiles"></div>
-        <h2>请求时间线</h2>
+        <h2 data-i18n="请求时间线">请求时间线</h2>
         <div class="panel pad">
           <div id="chart"></div>
-          <div class="legend"><span><i style="background: var(--bar)"></i>成功</span><span><i style="background: var(--bar-err)"></i>错误（4xx/5xx 或任务失败）</span><span id="bucket-note"></span></div>
+          <div class="legend"><span><i style="background: var(--bar)"></i><span data-i18n="成功">成功</span></span><span><i style="background: var(--bar-err)"></i><span data-i18n="错误">错误（4xx/5xx 或任务失败）</span></span><span id="bucket-note"></span></div>
         </div>
         <div class="grid3" style="margin-top: 10px;">
-          <div class="panel"><div class="cardhead">API 密钥排行<a class="link" href="#keys">管理密钥</a></div><div class="list" id="ov-keys"></div></div>
-          <div class="panel"><div class="cardhead">账号<a class="link" href="#accounts">查看全部</a></div><div class="list" id="ov-accounts"></div></div>
-          <div class="panel"><div class="cardhead">按模型统计</div><div class="list" id="ov-models"></div></div>
+          <div class="panel"><div class="cardhead"><span data-i18n="API 密钥排行">API 密钥排行</span><a class="link" href="#keys" data-i18n="管理密钥">管理密钥</a></div><div class="list" id="ov-keys"></div></div>
+          <div class="panel"><div class="cardhead"><span data-i18n="账号">账号</span><a class="link" href="#accounts" data-i18n="查看全部">查看全部</a></div><div class="list" id="ov-accounts"></div></div>
+          <div class="panel"><div class="cardhead" data-i18n="按模型统计">按模型统计</div><div class="list" id="ov-models"></div></div>
         </div>
         <div class="panel" style="margin-top: 10px;">
-          <div class="cardhead">按状态码统计</div><div class="list" id="ov-status"></div>
+          <div class="cardhead" data-i18n="按状态码统计">按状态码统计</div><div class="list" id="ov-status"></div>
         </div>
       </section>
 
       <!-- accounts -->
       <section class="page" id="page-accounts" hidden>
         <div class="page-head">
-          <div class="grow"><h1>账号</h1><div class="sub">账号池中的 muse.ai 账号。配额用尽的账号会在冷却结束后自动恢复。</div></div>
+          <div class="grow"><h1 data-i18n="账号">账号</h1><div class="sub" data-i18n="acc-sub">账号池中的 muse.ai 账号。配额用尽的账号会在冷却结束后自动恢复。</div></div>
           <div class="tools">
-            <button class="btn primary big" id="acc-new" type="button"><svg class="i"><use href="#i-plus"/></svg>添加账号</button>
-            <button class="btn primary big" id="acc-login" type="button"><svg class="i"><use href="#i-screen"/></svg>浏览器登录</button>
-            <button class="btn" id="acc-refresh" type="button"><svg class="i"><use href="#i-refresh"/></svg>刷新</button>
+            <button class="btn primary big" id="acc-new" type="button"><svg class="i"><use href="#i-plus"/></svg><span data-i18n="添加账号">添加账号</span></button>
+            <button class="btn primary big" id="acc-login" type="button"><svg class="i"><use href="#i-screen"/></svg><span data-i18n="浏览器登录">浏览器登录</span></button>
+            <button class="btn" id="acc-refresh" type="button"><svg class="i"><use href="#i-refresh"/></svg><span data-i18n="刷新">刷新</span></button>
           </div>
         </div>
         <div class="summary" id="acc-summary"></div>
@@ -464,33 +479,33 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
       <!-- keys -->
       <section class="page" id="page-keys" hidden>
         <div class="page-head">
-          <div class="grow"><h1>API 密钥</h1><div class="sub">客户端调用 <span class="mono">/v1/*</span> 所用的密钥。服务器只保存哈希——密钥仅在创建时显示一次。</div></div>
-          <div class="tools"><button class="btn primary big" id="key-new" type="button"><svg class="i"><use href="#i-plus"/></svg>创建 API 密钥</button></div>
+          <div class="grow"><h1 data-i18n="API 密钥">API 密钥</h1><div class="sub" data-i18n-html="keys-sub">客户端调用 <span class="mono">/v1/*</span> 所用的密钥。服务器只保存哈希——密钥仅在创建时显示一次。</div></div>
+          <div class="tools"><button class="btn primary big" id="key-new" type="button"><svg class="i"><use href="#i-plus"/></svg><span data-i18n="创建 API 密钥">创建 API 密钥</span></button></div>
         </div>
         <div class="tiles" id="key-tiles" style="margin-bottom: 12px;"></div>
         <div class="panel">
           <div class="tablewrap">
             <table class="resp">
               <thead><tr>
-                <th>名称</th><th class="hide-sm">密钥</th><th>状态</th><th class="num">总计</th><th class="num">24小时</th><th class="num">24小时错误</th><th>最后请求</th><th class="hide-sm">创建时间</th><th></th>
+                <th data-i18n="名称">名称</th><th class="hide-sm" data-i18n="密钥">密钥</th><th data-i18n="状态">状态</th><th class="num" data-i18n="总计">总计</th><th class="num" data-i18n="24小时">24小时</th><th class="num" data-i18n="24小时错误">24小时错误</th><th data-i18n="最后请求">最后请求</th><th class="hide-sm" data-i18n="创建时间">创建时间</th><th></th>
               </tr></thead>
               <tbody id="keys-body"></tbody>
             </table>
           </div>
         </div>
-        <p class="muted" style="font-size: 12px; margin: 8px 2px 0;">数据来自请求日志（按保留期限配置自动清理），不含轮询。点击某一行可查看该密钥的请求记录。</p>
+        <p class="muted" style="font-size: 12px; margin: 8px 2px 0;" data-i18n="keys-note">数据来自请求日志（按保留期限配置自动清理），不含轮询。点击某一行可查看该密钥的请求记录。</p>
         <details class="guide" id="client-guide" style="margin-top: 14px;">
-          <summary>客户端接入指南：如何把密钥添加到 CC Switch / Codex CLI（点击展开）</summary>
-          <h4>方式一：CC Switch（推荐，图形界面）</h4>
+          <summary data-i18n="cg-summary">客户端接入指南：如何把密钥添加到 CC Switch / Codex CLI（点击展开）</summary>
+          <h4 data-i18n="cg-cc-title">方式一：CC Switch（推荐，图形界面）</h4>
           <ol>
             <li>打开 CC Switch → <b>供应商</b> → <b>Codex</b> 分栏 → <b>添加供应商</b>；</li>
             <li><b>Base URL</b> 填 <code class="mono origin-text"></code>，<b>API Key</b> 粘贴上面创建的密钥（<code class="mono">m2a-</code> 开头）；</li>
             <li>模型填 <code class="mono">gpt-4o</code> 等别名（以 <code class="mono">GET /v1/models</code> 返回为准），保存后切换到该供应商即可。</li>
           </ol>
-          <h4>方式二：Codex CLI</h4>
+          <h4 data-i18n="cg-codex-title">方式二：Codex CLI</h4>
           <p>编辑 <code class="mono">~/.codex/config.toml</code>，并设置环境变量 <code class="mono">export OPENAI_API_KEY=你的密钥</code>：</p>
           <div class="row"><pre class="code grow" id="cg-toml"></pre><button class="btn sm" type="button" data-copy="cg-toml">复制</button></div>
-          <h4>方式三：任意 OpenAI 兼容客户端 / curl 自测</h4>
+          <h4 data-i18n="cg-curl-title">方式三：任意 OpenAI 兼容客户端 / curl 自测</h4>
           <div class="row"><pre class="code grow" id="cg-curl"></pre><button class="btn sm" type="button" data-copy="cg-curl">复制</button></div>
           <p class="muted">提示：地址为本机访问地址，远程访问请替换为服务器的实际地址（如 <code class="mono">http://192.168.x.x:18610/v1</code>）；建议先用 curl 自测通过，再接入客户端。流式输出同样支持。</p>
         </details>
@@ -499,37 +514,37 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
       <!-- requests -->
       <section class="page" id="page-requests" hidden>
         <div class="page-head">
-          <div class="grow"><h1>请求记录</h1><div class="sub">发往 <span class="mono">/v1/*</span> 的每个请求的日志。点击一行查看详情。</div></div>
-          <div class="tools"><label class="chk"><input type="checkbox" id="f-live" checked> <span class="livedot on" id="live-dot"></span> 自动刷新</label></div>
+          <div class="grow"><h1 data-i18n="请求记录">请求记录</h1><div class="sub" data-i18n-html="req-sub">发往 <span class="mono">/v1/*</span> 的每个请求的日志。点击一行查看详情。</div></div>
+          <div class="tools"><label class="chk"><input type="checkbox" id="f-live" checked> <span class="livedot on" id="live-dot"></span> <span data-i18n="自动刷新">自动刷新</span></label></div>
         </div>
         <div class="filters">
           <select id="f-key" aria-label="密钥"></select>
           <select id="f-account" aria-label="账号"></select>
           <select id="f-status" aria-label="状态">
-            <option value="">全部状态</option>
+            <option value="" data-i18n="全部状态">全部状态</option>
             <option value="2xx">2xx</option>
             <option value="4xx">4xx</option>
             <option value="5xx">5xx</option>
-            <option value="failed">错误（含任务失败）</option>
+            <option value="failed" data-i18n="错误（含任务失败）">错误（含任务失败）</option>
           </select>
-          <input type="text" id="f-path" placeholder="路径，例如 /v1/chat" aria-label="路径前缀">
-          <label class="chk"><input type="checkbox" id="f-polls" checked> 隐藏轮询</label>
+          <input type="text" id="f-path" placeholder="路径，例如 /v1/chat" data-i18n-placeholder="路径，例如 /v1/chat" data-i18n-aria="路径前缀" aria-label="路径前缀">
+          <label class="chk"><input type="checkbox" id="f-polls" checked> <span data-i18n="隐藏轮询">隐藏轮询</span></label>
           <span id="f-chips" class="row"></span>
         </div>
         <div class="panel">
           <div class="tablewrap">
             <table>
               <thead><tr>
-                <th>时间</th><th>方法</th><th>路径</th><th class="hide-sm">模型</th><th>密钥</th>
-                <th class="hide-sm">账号</th><th class="num">状态</th><th class="num">延迟</th><th class="hide-sm">客户端</th>
+                <th data-i18n="时间">时间</th><th data-i18n="方法">方法</th><th data-i18n="路径">路径</th><th class="hide-sm" data-i18n="模型">模型</th><th data-i18n="密钥">密钥</th>
+                <th class="hide-sm" data-i18n="账号">账号</th><th class="num" data-i18n="状态">状态</th><th class="num" data-i18n="延迟">延迟</th><th class="hide-sm" data-i18n="客户端">客户端</th>
               </tr></thead>
               <tbody id="req-body"></tbody>
             </table>
           </div>
           <div class="pager">
             <span id="req-range"></span>
-            <button class="btn sm" id="req-prev" type="button">较新</button>
-            <button class="btn sm" id="req-next" type="button">较早</button>
+            <button class="btn sm" id="req-prev" type="button" data-i18n="较新">较新</button>
+            <button class="btn sm" id="req-next" type="button" data-i18n="较早">较早</button>
           </div>
         </div>
       </section>
@@ -550,9 +565,258 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
 "use strict";
 (() => {
   const STORE = "muse2api.adminKey";
+  const LANG_STORE = "muse2api.lang";
+  const getLang = () => {
+    try {
+      const saved = localStorage.getItem(LANG_STORE);
+      if (saved === "zh" || saved === "en") return saved;
+      return (navigator.language || "").toLowerCase().startsWith("zh") ? "zh" : "en";
+    } catch { return "zh"; }
+  };
+  let currentLang = getLang();
+
+  const I18N = {
+    en: {
+      "管理控制台": "Admin Console",
+      "登录": "Sign In",
+      "管理员密钥": "Admin Key",
+      "login-desc": "Enter the admin key (<span class=\"mono\">MUSE2API_ADMIN_KEY</span>). It will be saved in your browser's local storage.",
+      "导航": "Navigation",
+      "管理": "Management",
+      "总览": "Overview",
+      "账号": "Accounts",
+      "API 密钥": "API Keys",
+      "请求记录": "Request Logs",
+      "开发者": "Developer",
+      "界面主题": "Theme",
+      "跟随系统": "System",
+      "浅色": "Light",
+      "深色": "Dark",
+      "退出登录": "Sign Out",
+      "打开菜单": "Open Menu",
+      "刷新": "Refresh",
+      "请求时间线": "Request Timeline",
+      "成功": "Success",
+      "错误": "Errors",
+      "错误（4xx/5xx 或任务失败）": "Errors (4xx/5xx or task failures)",
+      "API 密钥排行": "Top API Keys",
+      "管理密钥": "Manage Keys",
+      "查看全部": "View All",
+      "按模型统计": "By Model",
+      "按状态码统计": "By Status Code",
+      "ov-sub": "<span class=\"mono\">/v1/*</span> traffic stats, excluding polling.",
+      "acc-sub": "muse.ai accounts in the pool. Accounts with exhausted quota recover automatically after cooldown.",
+      "keys-sub": "Keys used by clients to call <span class=\"mono\">/v1/*</span>. The server only stores hashes — keys are shown only once upon creation.",
+      "req-sub": "Logs of every request sent to <span class=\"mono\">/v1/*</span>. Click a row to view details.",
+      "添加账号": "Add Account",
+      "浏览器登录": "Browser Login",
+      "创建 API 密钥": "Create API Key",
+      "名称": "Name",
+      "密钥": "Key",
+      "状态": "Status",
+      "总计": "Total",
+      "24小时": "24h",
+      "24小时错误": "24h Errors",
+      "最后请求": "Last Request",
+      "创建时间": "Created At",
+      "keys-note": "Data from request logs (auto-pruned per retention policy), excluding polling. Click a row to inspect its requests.",
+      "cg-summary": "Client Setup Guide: How to add keys to CC Switch / Codex CLI (click to expand)",
+      "cg-cc-title": "Option 1: CC Switch (Recommended, GUI)",
+      "cg-codex-title": "Option 2: Codex CLI",
+      "cg-curl-title": "Option 3: Any OpenAI-compatible client / curl test",
+      "复制": "Copy",
+      "自动刷新": "Auto Refresh",
+      "全部状态": "All Statuses",
+      "错误（含任务失败）": "Errors (incl. task failures)",
+      "路径，例如 /v1/chat": "Path, e.g. /v1/chat",
+      "路径前缀": "Path prefix",
+      "隐藏轮询": "Hide polling",
+      "时间": "Time",
+      "方法": "Method",
+      "路径": "Path",
+      "模型": "Model",
+      "延迟": "Latency",
+      "客户端": "Client",
+      "较新": "Newer",
+      "较早": "Older",
+      "正在检查…": "Checking...",
+      "已就绪": "Ready",
+      "尚无账号": "No Accounts",
+      "暂无可用账号": "No Available Accounts",
+      "从未使用": "Never used",
+      "刚刚": "just now",
+      "失败": "Failed",
+      "已取消": "Cancelled",
+      "进行中": "In Progress",
+      "已停用": "Disabled",
+      "会话失效": "Session Invalid",
+      "配额用尽": "Quota Exceeded",
+      "冷却中": "Cooling",
+      "运行中": "Running",
+      "临时冷却": "Temporary Cooldown",
+      "编辑": "Edit",
+      "重置": "Reset",
+      "删除": "Delete",
+      "请求": "Requests",
+      "今日": "Today",
+      "本月": "Month",
+      "本季": "Quarter",
+      "今年": "Year",
+      "请求总数": "Total Requests",
+      "可用账号": "Available Accounts",
+      "可用密钥": "Active Keys",
+      "24小时请求": "24h Requests",
+      "使用中": "In use",
+      "个已吊销": "revoked",
+      "个处理中": "in flight",
+      "个账号可用": "accounts available",
+      "个账号运行中": "accounts running",
+      "个请求": "requests",
+      "个错误": "errors",
+      "暂无请求": "No requests yet",
+      "尚无账号": "No accounts yet",
+      "尚无密钥。点击 <b>创建 API 密钥</b> 创建第一个。": "No keys yet. Click <b>Create API Key</b> to create your first.",
+      "全部密钥": "All Keys",
+      "全部账号": "All Accounts",
+      "没有符合筛选条件的请求。": "No requests match the filter criteria.",
+      "创建新的 API 密钥": "Create New API Key",
+      "创建密钥": "Create Key",
+      "保存修改": "Save Changes",
+      "保存": "Save",
+      "取消": "Cancel",
+      "重命名密钥": "Rename Key",
+      "吊销密钥？": "Revoke Key?",
+      "吊销": "Revoke",
+      "恢复": "Restore",
+      "已吊销密钥": "Key revoked",
+      "已恢复密钥": "Key restored",
+      "删除密钥？": "Delete Key?",
+      "删除密钥": "Delete Key",
+      "已删除密钥": "Key deleted",
+      "密钥已更新": "Key updated",
+      "已启用账号": "Account enabled",
+      "已停用账号": "Account disabled",
+      "已删除账号": "Account deleted",
+      "已重置账号": "Account reset",
+      "已添加账号": "Account added",
+      "已更新账号": "Account updated",
+      "已更新账号与 Cookie": "Account and cookies updated",
+      "仍然保存": "Save Anyway",
+      "我已保存密钥": "I have saved the key",
+      "管理员密钥无效或已更改。": "Admin key is invalid or has changed.",
+      "管理员密钥不正确。": "Incorrect admin key.",
+      "请输入密钥名称。": "Please enter a key name.",
+      "内置密钥": "Built-in Keys",
+      "删除账号？": "Delete Account?",
+      "载入完整值到粘贴框": "Load raw value into paste box",
+      "整段粘贴": "Paste raw Cookie",
+      "已复制": "Copied",
+      '最后使用': 'Last Used',
+      '确认': 'Confirm',
+      '取消': 'Cancel',
+      '连接中断': 'Connection Lost',
+      '无法调用 /admin/status': 'Cannot reach /admin/status',
+      '驱动异常': 'Driver Error',
+      '续期': 'Renew',
+      '清除冷却与错误，恢复为运行状态': 'Clear cooldown & errors, reset to active',
+      '将于': 'will automatically resume at',
+      '自动恢复': '',
+      '已就绪': 'Ready',
+      'Token<br>用量': 'Token<br>Usage',
+      '次请求': 'requests',
+      '每个窗口都是全新的浏览器，各账号 Cookie 独立入池，由账号池自动轮换调度。': 'Each window is a fresh browser; cookies are captured into the pool and scheduled automatically.',
+      '继续登录下一个': 'Login Next Account',
+      '完成': 'Done',
+      '等待登录完成…': 'Waiting for login...',
+      '还缺：': 'Still missing: ',
+      '点击开始后，服务器会打开一个 Chrome 窗口并进入 muse.ai。': 'When started, the server opens a Chrome window to muse.ai.',
+      '登录已超时': 'Login timed out',
+      '可在管理面板关闭自动弹出的窗口。': 'You can close the popup window in the admin panel.',
+      '重命名': 'Rename',
+      '复制': 'Copy',
+      '已复制': 'Copied',
+      '按模型统计': 'By Model',
+      '按状态码统计': 'By Status Code',
+      '没有符合筛选条件的请求。': 'No requests match the filter criteria.',
+      '轮询': 'Polling',
+      '是': 'Yes',
+      '否': 'No',
+      '耗时': 'Duration',
+      '客户端 IP': 'Client IP',
+      'User-Agent': 'User-Agent',
+      '错误详情': 'Error Details',
+      '请求详情': 'Request Details',
+      '关闭': 'Close',
+      '已创建': 'Created',
+      '已吊销': 'Revoked',
+      '正常': 'Active',
+      '清除密钥筛选': 'Clear Key Filter',
+      '清除账号筛选': 'Clear Account Filter',
+      '清除状态筛选': 'Clear Status Filter',
+      '清除轮询筛选': 'Clear Poll Filter',
+      '每柱': 'Per bar: ',
+      '小时': 'hours',
+      '分钟': 'minutes',
+      '秒': 'seconds',
+      '所有密钥，不含轮询': 'All keys, excluding polling',
+      '占请求的': 'of requests',
+      '暂无': 'None',
+      '查看': 'View',
+      '的请求': "'s requests",
+      '保存': 'Save',
+      '请输入密钥名称。': 'Please enter a key name.',
+      '名称': 'Name',
+      '例如：Cursor、Codex CLI、生产环境': 'e.g. Cursor, Codex CLI, Production',
+      '添加账号': 'Add Account',
+      '账号标签': 'Account Label',
+      '例如：acc1、work、个人': 'e.g. acc1, personal, work',
+      '会话凭证——必需，通常是 HttpOnly': 'Session token — required, usually HttpOnly',
+      '设备认证——必需': 'Device auth — required',
+      '整段粘贴': 'Paste Full Header',
+      '选填——': 'Optional — ',
+      '也可直接粘贴完整 Cookie 请求头，填了此项将优先使用': 'You can also paste raw Cookie request header here',
+      '账号已添加，但 Cookie 不完整': 'Account added, but cookies incomplete',
+      '建议删除这个账号，补全后重新添加。': 'Recommend deleting this account and re-adding with complete cookies.',
+      '删除账号？': 'Delete Account?',
+      '从账号池中永久删除，包括已保存的 cookies。请求历史仍会保留。': 'will be permanently removed from the pool. Request history is kept.',
+      '确认删除': 'Confirm Delete',
+      '仍然保存': 'Save Anyway',
+      '新手指南：怎么找到这些 Cookie？（点击展开图文）': 'Quick Guide: How to find these cookies? (click to expand)'
+    }
+  };
+
+  const t = (k) => (currentLang === "en" ? (I18N.en[k] || k) : k);
+
+  function applyI18n() {
+    document.documentElement.lang = currentLang === "en" ? "en" : "zh-CN";
+    document.title = (PAGES[state.page] || "MuseBridge") + (currentLang === "en" ? " · MuseBridge Console" : " · MuseBridge 控制台");
+    for (const b of $$(".lang-switch button")) {
+      b.setAttribute("aria-pressed", String(b.dataset.lang === currentLang));
+    }
+    for (const el of $$("[data-i18n]")) {
+      el.textContent = t(el.dataset.i18n);
+    }
+    for (const el of $$("[data-i18n-html]")) {
+      el.innerHTML = t(el.dataset.i18nHtml);
+    }
+    for (const el of $$("[data-i18n-title]")) {
+      el.title = t(el.dataset.i18nTitle);
+      if (el.hasAttribute("aria-label")) el.setAttribute("aria-label", t(el.dataset.i18nTitle));
+    }
+    for (const el of $$("[data-i18n-placeholder]")) {
+      el.placeholder = t(el.dataset.i18nPlaceholder);
+    }
+  }
+
+  function setLang(l) {
+    currentLang = l;
+    store.set(LANG_STORE, l);
+    applyI18n();
+    render();
+  }
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
-  const PAGES = {overview: "总览", accounts: "账号", keys: "API 密钥", requests: "请求记录"};
+  const PAGES = { get overview() { return t("总览"); }, get accounts() { return t("账号"); }, get keys() { return t("API 密钥"); }, get requests() { return t("请求记录"); } };
   const state = {
     page: "overview", window: "24h", offset: 0, limit: 50,
     accounts: [], keys: [], builtin: [], capabilities: {}, timer: null, modalOpen: false,
@@ -576,9 +840,15 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
   const fmtPct = (r) => `${(r * 100).toFixed(r && r < 0.1 ? 2 : 1)}%`;
   const icon = (name) => `<svg class="i"><use href="#i-${name}"/></svg>`;
   function ago(ts) {
-    if (!ts) return "从未使用";
+    if (!ts) return t("从未使用");
     const s = Math.max(0, now() - ts);
-    if (s < 10) return "刚刚";
+    if (s < 10) return t("刚刚");
+    if (currentLang === "en") {
+      if (s < 60) return `${Math.floor(s)}s ago`;
+      if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+      if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+      return `${Math.floor(s / 86400)}d ago`;
+    }
     if (s < 60) return `${Math.floor(s)} 秒前`;
     if (s < 3600) return `${Math.floor(s / 60)} 分钟前`;
     if (s < 86400) return `${Math.floor(s / 3600)} 小时前`;
@@ -656,6 +926,8 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
   }
   for (const b of $$(".themes button")) b.addEventListener("click", () => applyTheme(b.dataset.theme));
   applyTheme(store.get("muse2api.theme") || "auto");
+  for (const b of $$(".lang-switch button")) b.addEventListener("click", () => setLang(b.dataset.lang));
+  applyI18n();
 
   // ---- modal (in-page; never window.confirm/alert) ----
   // Each action: {label, value, cls, primary, collect(), check(value) -> error string}.
@@ -718,9 +990,9 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
       if (focus) focus.focus();
     });
   }
-  const confirmBox = (title, html, label = "确认", danger = true) => modal({
+  const confirmBox = (title, html, label = t("确认"), danger = true) => modal({
     title, body: html,
-    actions: [{label: "取消", value: null}, {label, value: true, primary: true, cls: danger ? "danger solid" : "primary"}],
+    actions: [{label: t("取消"), value: null}, {label, value: true, primary: true, cls: danger ? "danger solid" : "primary"}],
   });
 
   // ---- login ----
@@ -745,15 +1017,15 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
 
   // ---- shared status / health ----
   function updateHealth(st, failed) {
-    let cls = "ok", text = "运行中", sub = "";
-    if (failed) { cls = "err"; text = "连接中断"; sub = "无法调用 /admin/status"; }
+    let cls = "ok", text = t("运行中"), sub = "";
+    if (failed) { cls = "err"; text = t("连接中断"); sub = t("无法调用 /admin/status"); }
     else {
       const pool = st.accounts || {}, drv = st.driver || {};
-      sub = `${fmtNum(pool.available)}/${fmtNum(pool.total)} 个账号可用`;
-      if (drv.ok === false) { cls = "err"; text = "驱动异常"; sub = `driver ${drv.driver || ""}`; }
-      else if (!pool.total) { cls = "warn"; text = "尚无账号"; }
-      else if (!pool.available) { cls = "warn"; text = "暂无可用账号"; }
-      else if (pool.available < pool.total) { text = "运行中"; }
+      sub = currentLang === "en" ? `${fmtNum(pool.available)}/${fmtNum(pool.total)} accounts available` : `${fmtNum(pool.available)}/${fmtNum(pool.total)} 个账号可用`;
+      if (drv.ok === false) { cls = "err"; text = t("驱动异常"); sub = `driver ${drv.driver || ""}`; }
+      else if (!pool.total) { cls = "warn"; text = t("尚无账号"); }
+      else if (!pool.available) { cls = "warn"; text = t("暂无可用账号"); }
+      else if (pool.available < pool.total) { text = t("运行中"); }
     }
     for (const d of [$("#health-dot"), $("#top-dot")]) d.className = `pulse ${cls}`;
     $("#health-text").textContent = text;
@@ -782,13 +1054,13 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
   // ---- accounts ----
   const isQuota = (a) => /quota|credit|out of (usage|messages)|limit reached|exhaust/i.test(a.last_error || "");
   function accState(a, t) {
-    if (!a.enabled) return {key: "disabled", label: "已停用", cls: "mute", badge: "b-mute"};
-    if (a.status === "invalid") return {key: "invalid", label: "会话失效", cls: "err", badge: "b-err"};
+    if (!a.enabled) return {key: "disabled", label: t("已停用"), cls: "mute", badge: "b-mute"};
+    if (a.status === "invalid") return {key: "invalid", label: t("会话失效"), cls: "err", badge: "b-err"};
     if (a.status === "cooling" && a.cooldown_until > t) {
-      return isQuota(a) ? {key: "quota", label: "配额用尽", cls: "warn", badge: "b-warn"}
-        : {key: "cooling", label: "冷却中", cls: "info", badge: "b-info"};
+      return isQuota(a) ? {key: "quota", label: t("配额用尽"), cls: "warn", badge: "b-warn"}
+        : {key: "cooling", label: t("冷却中"), cls: "info", badge: "b-info"};
     }
-    return {key: "active", label: "运行中", cls: "ok", badge: "b-ok"};
+    return {key: "active", label: t("运行中"), cls: "ok", badge: "b-ok"};
   }
 
   function accountCard(a) {
@@ -805,9 +1077,9 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
         <label class="switch" title="${a.enabled ? "已启用 — 点击停用" : "已停用 — 点击启用"}"><input type="checkbox" data-act="toggle" ${a.enabled ? "checked" : ""} aria-label="启用账号 ${esc(name)}"><span></span></label>
       </div>
       <dl class="metrics">
-        <div><dt>成功</dt><dd>${fmtNum(a.success_count)}</dd></div>
-        <div><dt>失败</dt><dd>${a.fail_count ? `<span class="f">${fmtNum(a.fail_count)}</span>` : "0"}</dd></div>
-        <div><dt>最后使用</dt><dd title="${esc(fullTime(a.last_used_at))}" data-ago="${esc(a.last_used_at || 0)}">${esc(ago(a.last_used_at))}</dd></div>
+        <div><dt>${t("成功")}</dt><dd>${fmtNum(a.success_count)}</dd></div>
+        <div><dt>${t("失败")}</dt><dd>${a.fail_count ? `<span class="f">${fmtNum(a.fail_count)}</span>` : "0"}</dd></div>
+        <div><dt>${t("最后使用")}</dt><dd title="${esc(fullTime(a.last_used_at))}" data-ago="${esc(a.last_used_at || 0)}">${esc(ago(a.last_used_at))}</dd></div>
       </dl>
       ${(() => {
         const u = state.accountUsage[a.id] || {};
@@ -815,7 +1087,7 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
           const tok = u["tokens_" + key] || 0, req = u["requests_" + key] || 0;
           return `<div><dt>${label}</dt><dd${tok ? "" : ' class="zero"'} title="${label}：${fmtNum(tok)} tokens · ${fmtNum(req)} 次请求">${fmtTokens(tok)}</dd></div>`;
         };
-        return `<div class="usage"><span class="cap">Token<br>用量</span><dl class="metrics">${cell("今日", "day")}${cell("本月", "month")}${cell("本季", "quarter")}${cell("今年", "year")}</dl></div>`;
+        return `<div class="usage"><span class="cap">${t("Token<br>用量")}</span><dl class="metrics">${cell(t("今日"), "day")}${cell(t("本月"), "month")}${cell(t("本季"), "quarter")}${cell(t("今年"), "year")}</dl></div>`;
       })()}
       ${cooling ? `<div class="cooldown">
           <span class="t" data-until="${esc(a.cooldown_until)}">${esc(countdown(a.cooldown_until - t))}</span>
@@ -823,12 +1095,12 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
         </div>` : ""}
       ${a.last_error ? `<div class="reason" title="last_error">${esc(a.last_error)}</div>` : ""}
       <div class="acc-actions">
-        ${state.capabilities.renew_session ? `<button class="btn sm" type="button" data-act="renew">续期</button>` : ""}
-        <button class="btn sm" type="button" data-act="reset" ${s.key === "active" && !a.last_error ? "disabled" : ""} title="清除冷却与错误，恢复为运行状态">重置</button>
-        <button class="btn sm ghost" type="button" data-act="requests">请求</button>
-        <button class="btn sm" type="button" data-act="edit">编辑</button>
+        ${state.capabilities.renew_session ? `<button class="btn sm" type="button" data-act="renew">${t("续期")}</button>` : ""}
+        <button class="btn sm" type="button" data-act="reset" ${s.key === "active" && !a.last_error ? "disabled" : ""} title="${t("清除冷却与错误，恢复为运行状态")}">${t("重置")}</button>
+        <button class="btn sm ghost" type="button" data-act="requests">${t("请求")}</button>
+        <button class="btn sm" type="button" data-act="edit">${t("编辑")}</button>
         <span class="spacer"></span>
-        <button class="btn sm danger" type="button" data-act="delete">删除</button>
+        <button class="btn sm danger" type="button" data-act="delete">${t("删除")}</button>
       </div>
     </article>`;
   }
@@ -838,8 +1110,8 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
     for (const a of state.accounts) counts[accState(a, t).key] += 1;
     const chip = (k, label, badge) => counts[k] ? `<span class="badge ${badge}">${label} <b>${counts[k]}</b></span>` : "";
     $("#acc-summary").innerHTML = state.accounts.length ? [
-      chip("active", "运行中", "b-ok"), chip("quota", "配额用尽", "b-warn"), chip("cooling", "冷却中", "b-info"),
-      chip("invalid", "会话失效", "b-err"), chip("disabled", "已停用", "b-mute"),
+      chip("active", t("运行中"), "b-ok"), chip("quota", t("配额用尽"), "b-warn"), chip("cooling", t("冷却中"), "b-info"),
+      chip("invalid", t("会话失效"), "b-err"), chip("disabled", t("已停用"), "b-mute"),
     ].join("") : "";
     // Problems first, then by label.
     const order = {quota: 0, invalid: 1, cooling: 2, active: 3, disabled: 4};
@@ -962,7 +1234,7 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
     const editing = !!a;
     const val = (k) => esc((plain && plain[k]) || "");
     return modal({
-      title: editing ? `编辑账号 ${a.label || a.id}` : "添加账号",
+      title: editing ? `${t("编辑账号")} ${a.label || a.id}` : t("添加账号"),
       body: `${editing
           ? `<p class="muted" style="margin:0">各字段已预填当前保存的 Cookie 明文：修改某项即更新，<b>清空某项即删除该 Cookie</b>；其他已存 Cookie（如 _ga）自动保留。在「整段粘贴」填写则整体替换。</p>
         <div class="row"><button class="btn sm" type="button" id="af-load" data-id="${esc(a.id)}">${icon("copy")}载入完整值到粘贴框</button><span class="muted" style="font-size:12px">便于复制或整体替换</span></div>`
@@ -984,7 +1256,7 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
         <label class="f">hatch_native_auth_device <span class="hint">设备认证——必需</span><textarea id="af-native" rows="2" spellcheck="false" autocomplete="off">${val("hatch_native_auth_device")}</textarea></label>
         <label class="f">整段粘贴 <span class="hint">选填——${editing ? "填写后将整体替换全部已存 Cookie" : "也可直接粘贴完整 Cookie 请求头，填了此项将优先使用"}</span><textarea id="af-raw" rows="2" spellcheck="false" autocomplete="off" placeholder="hatch_sess=...; hatch_gw=...; hatch_vml=...; hatch_native_auth_device=..."></textarea></label>`,
       actions: [{label: "取消", value: null},
-        {label: editing ? "保存修改" : "添加账号", primary: true, cls: "primary",
+        {label: editing ? t("保存修改") : t("添加账号"), primary: true, cls: "primary",
          collect: () => ({label: $("#af-label").value.trim(),
            sess: $("#af-sess").value.trim(), gw: $("#af-gw").value.trim(),
            vml: $("#af-vml").value.trim(), native: $("#af-native").value.trim(),
@@ -1190,11 +1462,11 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
     const pool = st.accounts || {};
     const activeKeys = state.keys.filter((k) => !k.revoked).length;
     $("#tiles").innerHTML = [
-      tile("请求总数", fmtNum(stats.total), `${stats.window} 内`),
+      tile(t("请求总数"), fmtNum(stats.total), `${stats.window} 内`),
       tile("错误率", fmtPct(stats.error_rate), `${fmtNum(stats.errors)} 个错误 · ${fmtNum(stats.server_errors)} 个 5xx`, stats.error_rate >= 0.1 ? "bad" : ""),
       tile("P95 延迟", fmtMs(stats.latency_ms.p95), `p50 ${fmtMs(stats.latency_ms.p50)}`),
-      tile("可用账号", `${fmtNum(pool.available)}/${fmtNum(pool.total)}`, `${fmtNum(pool.inflight)} 个处理中`, pool.total && !pool.available ? "warn" : ""),
-      tile("API 密钥", fmtNum(activeKeys), `使用中 · ${fmtNum(state.keys.length - activeKeys)} 个已吊销`),
+      tile(t("可用账号"), `${fmtNum(pool.available)}/${fmtNum(pool.total)}`, `${fmtNum(pool.inflight)} 个处理中`, pool.total && !pool.available ? "warn" : ""),
+      tile(t("API 密钥"), fmtNum(activeKeys), `使用中 · ${fmtNum(state.keys.length - activeKeys)} 个已吊销`),
     ].join("");
     lastStats = stats;
     $("#chart").innerHTML = chart(stats.series, stats.bucket_seconds);
@@ -1254,9 +1526,9 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
     const active = state.keys.filter((k) => !k.revoked).length;
     const req24 = sum("requests_24h"), err24 = sum("errors_24h");
     $("#key-tiles").innerHTML = [
-      tile("可用密钥", fmtNum(active), `${fmtNum(state.keys.length - active)} 个已吊销`),
-      tile("24小时请求", fmtNum(req24), "所有密钥，不含轮询"),
-      tile("24小时错误", fmtNum(err24), req24 ? `占请求的 ${fmtPct(err24 / req24)}` : "–", err24 && err24 / req24 >= 0.1 ? "bad" : ""),
+      tile(t("可用密钥"), fmtNum(active), `${fmtNum(state.keys.length - active)} 个已吊销`),
+      tile(t("24小时请求"), fmtNum(req24), "所有密钥，不含轮询"),
+      tile(t("24小时错误"), fmtNum(err24), req24 ? `占请求的 ${fmtPct(err24 / req24)}` : "–", err24 && err24 / req24 >= 0.1 ? "bad" : ""),
     ].join("");
     const statusBadgeK = (k) => k.revoked ? `<span class="badge b-err">已吊销</span>` : `<span class="badge b-ok">正常</span>`;
     const rows = state.keys.map((k) => `<tr class="click" data-id="${esc(k.id)}" tabindex="0" title="查看 ${esc(k.name)} 的请求">
@@ -1295,7 +1567,7 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
   }
 
   $("#key-new").addEventListener("click", () => guarded(async () => {
-    const form = await keyForm("创建新的 API 密钥", {}, "创建密钥");
+    const form = await keyForm(t("创建新的 API 密钥"), {}, t("创建密钥"));
     if (!form) return;
     const res = await api("/admin/keys", {method: "POST", body: form});
     await loadKeys();
@@ -1305,7 +1577,7 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
         <div class="secret"><input type="text" id="new-key" readonly value="${esc(res.api_key)}" aria-label="新的 API 密钥" spellcheck="false">
         <button class="btn primary" type="button" id="copy-key">${icon("copy")}复制</button></div>
         <div class="usage-hint">Authorization: Bearer ${esc(res.api_key.slice(0, 12))}…</div>`,
-      actions: [{label: "我已保存密钥", value: null, primary: true, cls: ""}],
+      actions: [{label: t("我已保存密钥"), value: null, primary: true, cls: ""}],
     });
   }));
   // The copy button lives inside the modal body, which is re-rendered per modal.
@@ -1337,7 +1609,7 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
       const ident = `<b>${esc(k.name)}</b> (<span class="mono">${esc(k.prefix)}…</span>)`;
       switch (btn.dataset.act) {
         case "edit": {
-          const form = await keyForm("重命名密钥", k);
+          const form = await keyForm(t("重命名密钥"), k);
           if (!form) return;
           await api(path, {method: "PATCH", body: form});
           toast("密钥已更新");
@@ -1366,9 +1638,9 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
   function fillFilterOptions() {
     const keySel = $("#f-key"), accSel = $("#f-account");
     const keyVal = keySel.value || state.pendingKey || "", accVal = accSel.value || state.pendingAccount || "";
-    keySel.innerHTML = `<option value="">全部密钥</option><option value="legacy">legacy</option><option value="admin">admin</option>`
+    keySel.innerHTML = `<option value="">${t("全部密钥")}</option><option value="legacy">legacy</option><option value="admin">admin</option>`
       + state.keys.map((k) => `<option value="${esc(k.id)}">${esc(k.name)}${k.revoked ? "（已吊销）" : ""}</option>`).join("");
-    accSel.innerHTML = `<option value="">全部账号</option>`
+    accSel.innerHTML = `<option value="">${t("全部账号")}</option>`
       + state.accounts.map((a) => `<option value="${esc(a.id)}">${esc(a.label || a.id)}</option>`).join("");
     for (const [sel, val] of [[keySel, keyVal], [accSel, accVal]]) {
       sel.value = val;
