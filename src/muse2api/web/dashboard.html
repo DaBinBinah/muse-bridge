@@ -858,7 +858,6 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
   };
 
   const _t = (k) => (currentLang === "en" ? (I18N.en[k] != null ? I18N.en[k] : k) : k);
-  const t = _t;
 
   function applyI18n() {
     document.documentElement.lang = currentLang === "en" ? "en" : "zh-CN";
