@@ -160,3 +160,83 @@ def fetch_as_base64(url: str) -> str:
     return {{ ok: true, mime: b.type || '', b64: btoa(s) }};
   }} catch (e) {{ return {{ ok: false, err: String(e) }}; }}
 }})()"""
+
+
+QUOTA_LOOKUP = r"""(async () => {
+  function trigger(el) {
+    if (!el) return;
+    for (const evt of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']) {
+      el.dispatchEvent(new MouseEvent(evt, { bubbles: true, cancelable: true }));
+    }
+  }
+
+  let dialog = document.querySelector('[role="dialog"]');
+  if (!dialog) {
+    const btn = document.querySelector('button[aria-label="Settings"], button[data-testid="hatch-dock-more"]');
+    if (!btn) return { ok: false, error: "settings button not found" };
+    trigger(btn);
+    await new Promise(r => setTimeout(r, 400));
+    const allItems = Array.from(document.querySelectorAll('[role="menuitem"], button, div'));
+    const item = allItems.find(x => x.innerText && x.innerText.trim() === 'Settings');
+    if (!item) {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      return { ok: false, error: "settings item not found in menu" };
+    }
+    trigger(item);
+    await new Promise(r => setTimeout(r, 800));
+    dialog = document.querySelector('[role="dialog"]');
+  }
+
+  if (!dialog) {
+    return { ok: false, error: "settings dialog not found" };
+  }
+
+  const text = dialog.innerText || "";
+
+  let plan = "Free plan";
+  let weekly_reset = null;
+  let weekly_used_percent = 0;
+  let additional_left = null;
+  let additional_used_percent = 0;
+  let additional_expires = "Never expires";
+
+  // Match: Weekly limit resets on <date>
+  const resetMatch = text.match(/Weekly limit resets on ([^\n\r]+)/i);
+  if (resetMatch) weekly_reset = resetMatch[1].trim();
+
+  // Free plan percent used
+  const freePb = dialog.querySelector('[role="progressbar"][aria-label*="Free"], [role="progressbar"][aria-label*="Plan"]');
+  if (freePb) {
+    weekly_used_percent = parseInt(freePb.getAttribute('aria-valuenow') || '0', 10);
+    plan = freePb.getAttribute('aria-label') || plan;
+  }
+
+  // Match: Never expires / expires on <date>
+  const expiresMatch = text.match(/(Never expires|[A-Za-z]+ \d+ expires|expires on [^\n\r]+)/i);
+  if (expiresMatch) additional_expires = expiresMatch[1].trim();
+
+  // Additional tokens left, e.g. "0% used (1B tokens left)" or "1B tokens left"
+  const tokensLeftMatch = text.match(/\(([^)]+tokens? left)\)/i) || text.match(/(\d+[A-Za-z]*\s+tokens?\s+left)/i);
+  if (tokensLeftMatch) additional_left = tokensLeftMatch[1].trim();
+
+  const addPb = dialog.querySelector('[role="progressbar"][aria-label*="Additional"], [role="progressbar"][aria-label*="token"]');
+  if (addPb) {
+    additional_used_percent = parseInt(addPb.getAttribute('aria-valuenow') || '0', 10);
+  }
+
+  // Close the dialog after reading
+  for (let i = 0; i < 3; i++) {
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true }));
+  }
+
+  return {
+    ok: true,
+    plan,
+    weekly_reset,
+    weekly_used_percent,
+    additional_left,
+    additional_used_percent,
+    additional_expires
+  };
+})()"""
+

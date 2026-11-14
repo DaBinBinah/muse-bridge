@@ -90,7 +90,7 @@ class _Tab:
 class BrowserDriver(MuseDriver):
     name = "browser"
     capabilities = DriverCapabilities(
-        chat=True, chat_images=True, image=True, image_edit=True, video=True, renew_session=True
+        chat=True, chat_images=True, image=True, image_edit=True, video=True, renew_session=True, quota=True
     )
 
     def __init__(self, settings: Settings, media: MediaStore | None = None) -> None:
@@ -856,3 +856,26 @@ class BrowserDriver(MuseDriver):
         for tab in idle:
             await self._close_tab(tab)
         return info
+
+    # ------------------------------------------------------------ quota
+    async def quota(self, account: Account) -> dict[str, Any]:
+        tab = await self._checkout(account)
+        try:
+            if not await self._on_thread(tab):
+                await self._new_thread(tab)
+            res = await tab.session.evaluate(dom.QUOTA_LOOKUP, await_promise=True, timeout=15.0) or {}
+            if not res.get("ok"):
+                raise UpstreamError(res.get("error") or "quota lookup failed")
+            return {
+                "plan": res.get("plan", "Free plan"),
+                "weekly_reset": res.get("weekly_reset"),
+                "weekly_used_percent": res.get("weekly_used_percent", 0),
+                "additional_left": res.get("additional_left"),
+                "additional_used_percent": res.get("additional_used_percent", 0),
+                "additional_expires": res.get("additional_expires"),
+                "bars": res.get("bars", []),
+            }
+        except (CDPError, TimeoutError) as exc:
+            raise UpstreamError(f"quota lookup failed: {exc}") from exc
+        finally:
+            await self._checkin(tab)
