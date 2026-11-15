@@ -977,11 +977,19 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
     const pad = (x) => String(x).padStart(2, "0");
     return h ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
   }
-  function clock(ts) {
+  function clock(ts, withSeconds = true) {
+    if (!ts) return "–";
     const d = new Date(ts * 1000);
-    const today = new Date().toDateString() === d.toDateString();
-    return today ? d.toLocaleTimeString([], {hour12: false})
-      : d.toLocaleString([], {month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false});
+    const lang = (typeof currentLang !== "undefined" && currentLang === "en") ? "en-US" : (typeof currentLang !== "undefined" && currentLang === "zh-CN" ? "zh-CN" : undefined);
+    const opts = {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false
+    };
+    if (withSeconds) opts.second = "2-digit";
+    return d.toLocaleString(lang, opts);
   }
   const fullTime = (ts) => ts ? new Date(ts * 1000).toLocaleString() : "–";
   function statusBadge(code) {
@@ -1555,8 +1563,8 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
       const x = L + i * bw + bw * 0.14, w = Math.max(1, bw * 0.72);
       const ok = p.count - p.errors;
       const label = currentLang === "en"
-        ? `${clock(p.t)}: ${p.count} requests, ${p.errors} errors`
-        : `${clock(p.t)}: ${p.count} 个请求，${p.errors} 个错误`;
+        ? `${clock(p.t, false)}: ${p.count} requests, ${p.errors} errors`
+        : `${clock(p.t, false)}: ${p.count} 个请求，${p.errors} 个错误`;
       if (p.count) {
         out += `<g><title>${esc(label)}</title>`;
         if (ok) out += `<rect x="${x}" y="${y(p.count)}" width="${w}" height="${y(p.errors) - y(p.count)}" fill="var(--bar)" rx="1"/>`;
