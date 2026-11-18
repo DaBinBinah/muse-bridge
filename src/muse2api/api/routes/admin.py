@@ -227,6 +227,17 @@ async def renew(account_id: str, svc: Services = Depends(get_services)) -> dict:
     return await renew_account(svc.pool, svc.driver, account_id)
 
 
+@router.post("/accounts/{account_id}/browser")
+async def open_account_browser(account_id: str, svc: Services = Depends(get_services)) -> dict:
+    """Open a visible Chromium window on the server, signed in as this account."""
+    acc = _get(svc, account_id)
+    try:
+        return await svc.login.open_account(acc)
+    except (FileNotFoundError, RuntimeError, OSError) as e:
+        raise InvalidRequest(
+            f"could not open a browser window ({e}); the server may have no GUI") from None
+
+
 @router.get("/accounts/{account_id}/quota")
 async def account_quota(account_id: str, svc: Services = Depends(get_services)) -> dict:
     """Ask the active driver for the account's quota snapshot and persist it in ``meta``.

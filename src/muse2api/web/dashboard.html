@@ -666,6 +666,9 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
       "临时冷却": "Temporary Cooldown",
       "编辑": "Edit",
       "重置": "Reset",
+      "浏览器": "Browser",
+      "以该账号打开可见的浏览器窗口": "Open muse.ai as this account in a visible browser window",
+      "已打开浏览器窗口": "Browser window opened",
       "删除": "Delete",
       "请求": "Requests",
       "今日": "Today",
@@ -1240,6 +1243,7 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
         ${state.capabilities.quota ? `<button class="btn sm" type="button" data-act="quota" title="${_t("查看/刷新 Muse 配额")}">${_t("配额")}</button>` : ""}
         ${state.capabilities.renew_session ? `<button class="btn sm" type="button" data-act="renew">${_t("续期")}</button>` : ""}
         <button class="btn sm" type="button" data-act="reset" ${s.key === "active" && !a.last_error ? "disabled" : ""} title="${_t("清除冷却与错误，恢复为运行状态")}">${_t("重置")}</button>
+        <button class="btn sm" type="button" data-act="browser" title="${_t("以该账号打开可见的浏览器窗口")}">${_t("浏览器")}</button>
         <button class="btn sm ghost" type="button" data-act="requests">${_t("请求")}</button>
         <button class="btn sm" type="button" data-act="edit">${_t("编辑")}</button>
         <span class="spacer"></span>
@@ -1354,6 +1358,7 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
         try {
           const res = await api(`${path}/${act}`, {method: "POST"});
           if (act === "renew") toast(res.ok ? _t("会话已续期") : (currentLang === "en" ? `Renewal failed: ${res.error || "unknown"}` : `续期失败：${res.error || "未知错误"}`));
+          else if (act === "browser") toast(_t("已打开浏览器窗口"));
           else toast(_t("已重置账号"));
         } finally { btn.disabled = false; }
       }

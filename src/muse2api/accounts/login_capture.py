@@ -25,7 +25,7 @@ from typing import Any
 from ..config import Settings
 from ..drivers.browser.cdp import CDPError, CDPSession
 from ..drivers.browser.chromium import ChromiumProcess, find_chromium
-from ..upstream.muse import SESSION_COOKIES, SITE
+from ..upstream.muse import NEW_THREAD_URL, SESSION_COOKIES, SITE
 from .model import Account, AccountStatus
 
 log = logging.getLogger(__name__)
@@ -94,6 +94,7 @@ class LoginCaptureManager:
         self._state: CaptureState | None = None
         self._task: asyncio.Task | None = None
         self._lock = asyncio.Lock()
+        self._windows: dict[str, ChromiumProcess] = {}
 
     @property
     def current(self) -> CaptureState | None:
@@ -122,6 +123,44 @@ class LoginCaptureManager:
             if self._task:
                 await asyncio.gather(self._task, return_exceptions=True)
         return state
+
+    async def open_account(self, account: Account) -> dict[str, Any]:
+        """A visible Chromium window signed in as ``account``, to see muse.ai the way
+        that account does (e.g. its "Muse is disconnected" page). The user closes it.
+
+        One window per account: opening again replaces the previous one.
+        """
+        # ponytail: a window outlives a bridge run from a terminal (web_app's stop
+        # kills the bridge's process group, windows included); track them on
+        # shutdown if that matters.
+        from ..drivers.browser.driver import BrowserDriver  # import cycle via accounts
+
+        if old := self._windows.pop(account.id, None):
+            await old.stop()
+        chromium = ChromiumProcess(
+            find_chromium(self._settings.chromium_path), _free_port(),
+            self._settings.data_dir / "login-profiles" / f"open_{account.id}",
+            headless=False, proxy=self._settings.browser_proxy,
+        )
+        browser = await CDPSession.connect(await chromium.start())
+        try:
+            targets = (await browser.send("Target.getTargets"))["targetInfos"]
+            target_id = next(t["targetId"] for t in targets if t["type"] == "page")
+            page = await CDPSession.connect(
+                f"ws://127.0.0.1:{chromium.port}/devtools/page/{target_id}")
+            try:
+                await page.send("Network.enable")
+                await BrowserDriver._set_cookies(page, account)
+                await page.send("Page.navigate", {"url": NEW_THREAD_URL})
+            finally:
+                await page.close()
+        except BaseException:
+            await chromium.stop()
+            raise
+        finally:
+            await browser.close()
+        self._windows[account.id] = chromium
+        return {"ok": True}
 
     # ------------------------------------------------------------- internals
 
