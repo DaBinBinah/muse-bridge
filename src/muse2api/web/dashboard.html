@@ -1183,7 +1183,7 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-si
   // ---- accounts ----
   const isQuota = (a) => /quota|credit|out of (usage|messages)|limit reached|exhaust/i.test(a.last_error || "");
   function accState(a, t = now()) {
-    if (!a.enabled) return {key: "disabled", label: _t("已停用"), cls: "mute", badge: "b-mute"};
+    if (!a.enabled) return {key: "disabled", label: _t((a.meta || {}).disabled_as_blocked ? "已被 muse 封禁" : "已停用"), cls: "mute", badge: "b-mute"};
     if (a.status === "invalid") return {key: "invalid", label: _t(/disconnected/i.test(a.last_error || "") ? "已被 muse 封禁" : "会话失效"), cls: "err", badge: "b-err"};
     if (a.status === "cooling" && a.cooldown_until > t) {
       return isQuota(a) ? {key: "quota", label: _t("配额用尽"), cls: "warn", badge: "b-warn"}

@@ -21,6 +21,7 @@ log = logging.getLogger(__name__)
 
 INVALID_RECHECK = 24 * 3600
 """How often an invalid account is tried again (e.g. muse.ai reopened it after a ticket)."""
+BLOCK_DISABLED = "disabled_as_blocked"
 
 
 async def renew_account(pool: AccountPool, driver: MuseDriver, account_id: str) -> dict:
@@ -77,10 +78,11 @@ async def check_quota(pool: AccountPool, driver: MuseDriver, acc: Account,
 async def sweep(pool: AccountPool, driver: MuseDriver, quota_cooldown: float = 3600) -> None:
     """Renew every usable account's session, then check its quota."""
     for acc in pool.all():
-        if not acc.enabled:
-            continue
-        if acc.status == AccountStatus.INVALID:
+        if acc.status == AccountStatus.INVALID and (acc.enabled or acc.meta.get(BLOCK_DISABLED)):
             await _recheck_invalid(pool, driver, acc)
+            await _disable_if_blocked(pool, acc)
+            continue
+        if not acc.enabled:
             continue
         try:
             result = await renew_account(pool, driver, acc.id)
@@ -95,6 +97,7 @@ async def sweep(pool: AccountPool, driver: MuseDriver, quota_cooldown: float = 3
                      q.get("weekly_used_percent"), q.get("additional_left"))
         except Exception as exc:  # noqa: BLE001
             log.warning("quota check failed for %s: %s", acc.id, exc)
+        await _disable_if_blocked(pool, acc)
 
 
 async def _recheck_invalid(pool: AccountPool, driver: MuseDriver, acc: Account) -> None:
@@ -110,8 +113,20 @@ async def _recheck_invalid(pool: AccountPool, driver: MuseDriver, acc: Account) 
         log.info("invalid account %s still unusable: %s", acc.id, exc)
         return
     acc.status, acc.last_error = AccountStatus.ACTIVE, None
+    if acc.meta.pop(BLOCK_DISABLED, None):
+        acc.enabled = True
     await pool.upsert(acc)
     log.warning("account %s works again, back to active", acc.id)
+
+
+async def _disable_if_blocked(pool: AccountPool, acc: Account) -> None:
+    """muse.ai blocked the account: switch it off. Only these accounts (not ones the
+    user switched off) keep being rechecked daily and come back on by themselves."""
+    if acc.enabled and acc.status == AccountStatus.INVALID and "disconnected" in (acc.last_error or ""):
+        acc.enabled = False
+        acc.meta[BLOCK_DISABLED] = True
+        await pool.upsert(acc)
+        log.warning("account %s is blocked by muse.ai, disabled", acc.id)
 
 
 async def keepalive_loop(pool: AccountPool, driver: MuseDriver, interval: float) -> None:

@@ -58,11 +58,22 @@ async def test_sweep_rechecks_invalid_accounts_once_a_day(tmp_path):
             return await super().quota(account)
 
     driver = Driver(delay=0)
+    await pool.upsert(Account(id="mine", cookies={"hatch_sess": "x"}, enabled=False,
+                              status=AccountStatus.INVALID, last_error="muse.ai disconnected"))
     await sweep(pool, driver)
     assert pool.get("back").status == AccountStatus.ACTIVE
     assert pool.get("back").last_error is None
     assert pool.get("a2").status == AccountStatus.INVALID
+    assert not pool.get("a2").enabled  # blocked -> switched off
 
     driver.quota_calls = []
     await sweep(pool, driver)  # a2 was checked moments ago: not again today
     assert driver.quota_calls == ["back"]
+
+    # muse.ai reopens a2 the next day: it is rechecked although disabled, and comes back on
+    pool.get("a2").meta["invalid_checked_at"] = 0
+    Driver.quota = FakeDriver.quota
+    driver.quota_calls = []
+    await sweep(pool, driver)
+    assert pool.get("a2").enabled and pool.get("a2").status == AccountStatus.ACTIVE
+    assert "mine" not in driver.quota_calls  # switched off by the user: left alone
