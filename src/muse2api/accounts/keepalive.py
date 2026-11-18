@@ -19,6 +19,9 @@ from .pool import AccountPool
 
 log = logging.getLogger(__name__)
 
+INVALID_RECHECK = 24 * 3600
+"""How often an invalid account is tried again (e.g. muse.ai reopened it after a ticket)."""
+
 
 async def renew_account(pool: AccountPool, driver: MuseDriver, account_id: str) -> dict:
     acc = pool.get(account_id)
@@ -74,7 +77,10 @@ async def check_quota(pool: AccountPool, driver: MuseDriver, acc: Account,
 async def sweep(pool: AccountPool, driver: MuseDriver, quota_cooldown: float = 3600) -> None:
     """Renew every usable account's session, then check its quota."""
     for acc in pool.all():
-        if not acc.enabled or acc.status == AccountStatus.INVALID:
+        if not acc.enabled:
+            continue
+        if acc.status == AccountStatus.INVALID:
+            await _recheck_invalid(pool, driver, acc)
             continue
         try:
             result = await renew_account(pool, driver, acc.id)
@@ -89,6 +95,23 @@ async def sweep(pool: AccountPool, driver: MuseDriver, quota_cooldown: float = 3
                      q.get("weekly_used_percent"), q.get("additional_left"))
         except Exception as exc:  # noqa: BLE001
             log.warning("quota check failed for %s: %s", acc.id, exc)
+
+
+async def _recheck_invalid(pool: AccountPool, driver: MuseDriver, acc: Account) -> None:
+    """Once a day, open muse.ai as an invalid account; if the page works again, the
+    account goes back to active without anyone pressing Reset."""
+    if not driver.capabilities.quota or time.time() - acc.meta.get("invalid_checked_at", 0) < INVALID_RECHECK:
+        return
+    acc.meta["invalid_checked_at"] = time.time()
+    await pool.upsert(acc)
+    try:
+        await check_quota(pool, driver, acc)
+    except Exception as exc:  # noqa: BLE001
+        log.info("invalid account %s still unusable: %s", acc.id, exc)
+        return
+    acc.status, acc.last_error = AccountStatus.ACTIVE, None
+    await pool.upsert(acc)
+    log.warning("account %s works again, back to active", acc.id)
 
 
 async def keepalive_loop(pool: AccountPool, driver: MuseDriver, interval: float) -> None:

@@ -41,3 +41,28 @@ def test_quota_exhausted():
     assert quota_exhausted({"weekly_used_percent": 100, "additional_left": "0 tokens left"})
     assert not quota_exhausted({"weekly_used_percent": 100, "additional_left": "1B tokens left"})
     assert not quota_exhausted({"weekly_used_percent": 40})
+
+
+async def test_sweep_rechecks_invalid_accounts_once_a_day(tmp_path):
+    pool = AccountPool(JsonAccountStore(tmp_path / "acc.json"))
+    # back: muse.ai reopened it; dead: still blocked (FakeDriver.quota raises for a2)
+    await pool.upsert(Account(id="back", cookies={"hatch_sess": "x"},
+                              status=AccountStatus.INVALID, last_error="muse.ai disconnected"))
+    await pool.upsert(Account(id="a2", cookies={"hatch_sess": "x"},
+                              status=AccountStatus.INVALID, last_error="muse.ai disconnected"))
+
+    class Driver(FakeDriver):
+        async def quota(self, account):
+            if account.id == "a2":
+                raise UpstreamAuthError("muse.ai disconnected")
+            return await super().quota(account)
+
+    driver = Driver(delay=0)
+    await sweep(pool, driver)
+    assert pool.get("back").status == AccountStatus.ACTIVE
+    assert pool.get("back").last_error is None
+    assert pool.get("a2").status == AccountStatus.INVALID
+
+    driver.quota_calls = []
+    await sweep(pool, driver)  # a2 was checked moments ago: not again today
+    assert driver.quota_calls == ["back"]

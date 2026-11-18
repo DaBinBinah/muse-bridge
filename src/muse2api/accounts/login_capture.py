@@ -130,9 +130,6 @@ class LoginCaptureManager:
 
         One window per account: opening again replaces the previous one.
         """
-        # ponytail: a window outlives a bridge run from a terminal (web_app's stop
-        # kills the bridge's process group, windows included); track them on
-        # shutdown if that matters.
         from ..drivers.browser.driver import BrowserDriver  # import cycle via accounts
 
         if old := self._windows.pop(account.id, None):
@@ -162,6 +159,15 @@ class LoginCaptureManager:
         self._windows[account.id] = chromium
         return {"ok": True}
 
+    async def close_windows(self) -> None:
+        """Close every window ``open_account`` opened (bridge shutdown)."""
+        windows, self._windows = list(self._windows.values()), {}
+        for chromium in windows:
+            try:
+                await chromium.stop()
+            except Exception:  # noqa: BLE001
+                pass
+
     # ------------------------------------------------------------- internals
 
     async def _run(self, state: CaptureState, timeout: float) -> None:
@@ -182,6 +188,7 @@ class LoginCaptureManager:
             )
             await page.send("Network.enable")
             deadline = time.time() + timeout
+            captured = False  # status flips to "captured" only once the account is saved
             while state.status == "waiting" and time.time() < deadline:
                 await asyncio.sleep(POLL_INTERVAL)
                 try:
@@ -194,7 +201,7 @@ class LoginCaptureManager:
                 except CDPError:
                     # The tab/window was closed. Complete from what we last saw.
                     if not state.missing:
-                        state.status = "captured"
+                        captured = True
                     else:
                         state.status = "cancelled"
                         state.error = "browser window was closed before login completed"
@@ -203,11 +210,12 @@ class LoginCaptureManager:
                 state.expires = expires
                 state.missing = [n for n in SESSION_COOKIES if not cookies.get(n)]
                 if not state.missing:
-                    state.status = "captured"
+                    captured = True
                     break
-            if state.status == "captured":
+            if captured:
                 state.account, state.created_account = await self._save(
                     state.label, state.cookies, state.expires)
+                state.status = "captured"
             elif state.status == "waiting":
                 state.status = "timeout"
                 state.error = f"no login within {int(timeout)} seconds"
