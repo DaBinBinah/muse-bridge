@@ -641,6 +641,17 @@ class BrowserDriver(MuseDriver):
             return cls.CHAT_TASK_GRACE
         return cls.CHAT_IMAGE_GRACE if cls.MEDIA_HINT_RE.search(reply or "") else 0.0
 
+    @staticmethod
+    def _full_size(att: dict, snaps: list[dict]) -> str:
+        """The full-size browser screenshot an attachment was scaled down from, if this
+        reply took one (same aspect ratio, larger); else the attachment itself."""
+        w, h = att.get("w") or 0, att.get("h") or 0
+        for s in reversed(snaps):  # the latest screenshot is the likeliest source
+            sw, sh = s.get("w") or 0, s.get("h") or 0
+            if h and sh and sw > w and abs(sw / sh - w / h) < 0.02 * (w / h):
+                return s["src"]
+        return att.get("src") or ""
+
     @classmethod
     def _image_candidates(cls, links: list[str], base_srcs: set[str]) -> list[str]:
         out: list[str] = []
@@ -700,9 +711,11 @@ class BrowserDriver(MuseDriver):
         base_srcs = {a["src"] for a in (base.get("attachments") or []) if a.get("src")}
         base_pending = sum(1 for a in (base.get("attachments") or [])
                            if a.get("kind") == "image" and (not a.get("src") or not a.get("w")))
+        base_snaps = {s.get("src") for s in (base.get("snapshots") or [])}
 
         async def probe() -> tuple[list[str], int]:
             st = await tab.session.evaluate(dom.CHAT_STATE) or {}
+            snaps = [s for s in st.get("snapshots") or [] if s.get("src") not in base_snaps]
             links: list[str] = []
             pending = 0
             for a in st.get("attachments", []):
@@ -712,6 +725,7 @@ class BrowserDriver(MuseDriver):
                 if src and src in base_srcs:
                     continue
                 if src and a.get("w"):
+                    src = self._full_size(a, snaps)
                     if src not in links:
                         links.append(src)
                 else:

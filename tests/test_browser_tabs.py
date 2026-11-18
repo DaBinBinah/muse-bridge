@@ -278,3 +278,12 @@ def test_media_grace():
     assert g("take a screenshot of example.com", "") == BrowserDriver.CHAT_TASK_GRACE
     assert g("selam", "here is the image you asked for") == BrowserDriver.CHAT_IMAGE_GRACE
     assert g("selam", "Selam!") == 0.0
+
+
+def test_attachment_is_swapped_for_the_full_size_browser_screenshot():
+    thumb = {"src": "blob:thumb", "w": 498, "h": 259}
+    full = {"src": "blob:full", "w": 1919, "h": 998}
+    other = {"src": "blob:square", "w": 1024, "h": 1024}
+    assert BrowserDriver._full_size(thumb, [full, other]) == "blob:full"
+    assert BrowserDriver._full_size(thumb, [other]) == "blob:thumb"  # aspect differs
+    assert BrowserDriver._full_size(thumb, []) == "blob:thumb"

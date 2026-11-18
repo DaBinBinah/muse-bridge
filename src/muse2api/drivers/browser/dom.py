@@ -12,6 +12,7 @@ import json
 INPUT = "textarea"
 AGENT_BUBBLE = 'div[class*="hatch-agent-bubble-bg"]'
 ATTACHMENT = '[data-testid^="hatch-chat-attachment-presentation-"]'
+BROWSER_SNAPSHOT = 'img[alt="Browser snapshot"]'
 STOP_BUTTON = 'button[aria-label*="Stop" i]'
 # The agent asks before acting on the user's behalf (e.g. uploading the result to
 # muse.ai/files as a public link). Nobody answers it here, so it would block for minutes.
@@ -72,11 +73,16 @@ CHAT_STATE = f"""(() => {{
       h: m ? (m.videoHeight || m.naturalHeight || 0) : 0,
     }};
   }});
+  // Full-size browser screenshots on the tool cards; the image the agent sends is
+  // often a ~500px copy of one of these.
+  const snaps = [...document.querySelectorAll({q(BROWSER_SNAPSHOT)})]
+    .filter(i => i.naturalWidth)
+    .map(i => ({{ src: i.currentSrc || i.src, w: i.naturalWidth, h: i.naturalHeight }}));
   const tail = document.body ? document.body.innerText.slice(-600) : '';
   return {{ agentCount: bubbles.length, lastText: last,
             generating: !!document.querySelector({q(STOP_BUTTON)}),
             approval: !!document.querySelector({q(APPROVAL_CARD)}),
-            attachments: atts, tail }};
+            attachments: atts, snapshots: snaps, tail }};
 }})()"""
 
 
