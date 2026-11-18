@@ -1,0 +1,43 @@
+from __future__ import annotations
+
+from muse2api.accounts import Account, AccountPool, AccountStatus, JsonAccountStore
+from muse2api.accounts.keepalive import quota_exhausted, sweep
+from muse2api.drivers.base import SessionInfo
+from muse2api.drivers.mock import MockDriver
+from muse2api.errors import UpstreamAuthError
+
+
+class FakeDriver(MockDriver):
+    """a0: healthy, a1: weekly limit used up, a2: dead cookies."""
+
+    async def renew_session(self, account: Account) -> SessionInfo:
+        if account.id == "a2":
+            raise UpstreamAuthError("expired")
+        return SessionInfo(ok=True, cookies={}, cookie_expires={}, meta={})
+
+    async def quota(self, account: Account) -> dict:
+        self.quota_calls = getattr(self, "quota_calls", []) + [account.id]
+        used = 100 if account.id == "a1" else 10
+        return {"weekly_used_percent": used, "additional_left": None}
+
+
+async def test_sweep_renews_checks_quota_and_marks_accounts(tmp_path):
+    pool = AccountPool(JsonAccountStore(tmp_path / "acc.json"))
+    for i in range(3):
+        await pool.upsert(Account(id=f"a{i}", cookies={"hatch_sess": "x"}))
+    driver = FakeDriver(delay=0)
+
+    await sweep(pool, driver, quota_cooldown=600)
+
+    assert pool.get("a0").status == AccountStatus.ACTIVE
+    assert pool.get("a1").status == AccountStatus.COOLING
+    assert pool.get("a2").status == AccountStatus.INVALID
+    assert driver.quota_calls == ["a0", "a1"]  # dead account is not queried
+    assert pool.get("a0").meta["quota"]["weekly_used_percent"] == 10
+
+
+def test_quota_exhausted():
+    assert quota_exhausted({"weekly_used_percent": 100, "additional_left": None})
+    assert quota_exhausted({"weekly_used_percent": 100, "additional_left": "0 tokens left"})
+    assert not quota_exhausted({"weekly_used_percent": 100, "additional_left": "1B tokens left"})
+    assert not quota_exhausted({"weekly_used_percent": 40})

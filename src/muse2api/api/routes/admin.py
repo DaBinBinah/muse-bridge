@@ -12,7 +12,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, Query
 
 from ... import __version__
-from ...accounts.keepalive import renew_account
+from ...accounts.keepalive import check_quota, renew_account
 from ...accounts.login_capture import LoginCaptureError
 from ...accounts.model import Account, AccountStatus
 from ...auth.keys import ApiKey
@@ -235,10 +235,7 @@ async def account_quota(account_id: str, svc: Services = Depends(get_services)) 
     ``FeatureNotImplemented``, which the app renders as HTTP 501.
     """
     acc = _get(svc, account_id)
-    snapshot = await svc.driver.quota(acc)
-    acc.meta["quota"] = {"checked_at": time.time(), **snapshot}
-    await svc.pool.upsert(acc)
-    return {"account_id": acc.id, "quota": acc.meta["quota"]}
+    return {"account_id": acc.id, "quota": await check_quota(svc.pool, svc.driver, acc)}
 
 
 @router.get("/tasks")

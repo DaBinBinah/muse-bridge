@@ -21,6 +21,17 @@ FILE_INPUT = 'input[type="file"]'
 LOGIN_HINTS = ("log in", "sign in", "create an account", "use another account")
 QUOTA_HINTS = ("out of credits", "usage limit", "limit reached", "token limit")
 STALL_HINTS = ("Still sending", "Connecting...")
+# Pages that will never show a chat input for this account.
+CONNECTED_HINT = "Connected"  # workspace badge; a blocked account never shows it
+DISCONNECTED_HINT = "Muse is disconnected"  # muse.ai blocked the account; needs a support ticket
+ONBOARDING_PATH = "/access/"  # first-run disclosure ("A few things to know") not accepted yet
+# Clicks the disclosure's "Get started"; true when the button was there.
+ACCEPT_DISCLOSURE = r"""(() => {
+  const b = [...document.querySelectorAll('button, [role="button"]')]
+    .find(e => (e.innerText || '').trim() === 'Get started' && !e.disabled);
+  if (b) b.click();
+  return !!b;
+})()"""
 
 
 def q(value: str) -> str:
