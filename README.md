@@ -12,7 +12,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.10%2B-3478F6?logo=python&logoColor=white" alt="Python">
   <img src="https://img.shields.io/badge/License-MIT-3478F6" alt="License">
-  <img src="https://img.shields.io/badge/version-1.7.1-3478F6" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.7.2-3478F6" alt="Version">
   <img src="https://img.shields.io/badge/API-OpenAI%20Compatible-0F8B72" alt="OpenAI Compatible">
 </p>
 
@@ -299,6 +299,12 @@ MuseBridge is an open-source technical project intended for API integration, req
 - Do not use this project for unauthorized access or unlawful activities.
 
 ---
+
+## 更新日志
+
+**v1.7.2（2026-10-25）**
+
+- 请求了类型不对的模型（比如拿视频模型去聊天）现在返回 404 `model_not_found`（OpenAI 官方惯例），不再是 400——对 Magpie 这类网关更友好，不会误判成账号出问题
 
 ## 更新日志
 

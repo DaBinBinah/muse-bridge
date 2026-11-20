@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from ..errors import InvalidRequest
+from ..errors import ModelNotFound
 
 ModelKind = Literal["chat", "image", "video"]
 
@@ -52,7 +52,9 @@ def resolve_model(name: str | None, kind: ModelKind) -> ModelSpec:
     """Resolve a client-supplied model name to a ``ModelSpec`` of the expected kind.
 
     Unknown names fall back to the default model of that kind; a known model of the
-    wrong kind is rejected so that e.g. ``muse-video`` is never silently used for chat.
+    wrong kind is rejected with 404 ``model_not_found`` (OpenAI's convention, and
+    gateways like Magpie read it as "model rejected" rather than "account broken")
+    so that e.g. ``muse-video`` is never silently used for chat.
     """
     if not name:
         return MODELS[DEFAULT_BY_KIND[kind]]
@@ -61,5 +63,5 @@ def resolve_model(name: str | None, kind: ModelKind) -> ModelSpec:
     if spec is None:
         return MODELS[DEFAULT_BY_KIND[kind]]
     if spec.kind != kind:
-        raise InvalidRequest(f"model '{name}' is a {spec.kind} model, expected {kind}")
+        raise ModelNotFound(f"model '{name}' is a {spec.kind} model, expected {kind}")
     return spec

@@ -90,11 +90,11 @@ def test_stream_and_error_logged(client, auth, admin):
         list(r.iter_lines())
     r = client.post("/v1/chat/completions", headers=auth, json={
         "model": "muse-video", "messages": [{"role": "user", "content": "x"}]})
-    assert r.status_code == 400
+    assert r.status_code == 404
 
     bad, streamed = _requests(client, admin)[:2]
     assert streamed["stream"] is True and streamed["status_code"] == 200
-    assert bad["status_code"] == 400
+    assert bad["status_code"] == 404
     assert bad["model"] == "muse-video"
     assert bad["error"]
 
@@ -140,7 +140,7 @@ def test_key_usage(client, auth, admin):
     a = _bearer(alice["api_key"])
     assert client.get("/v1/models", headers=a).status_code == 200
     assert client.post("/v1/chat/completions", headers=a, json={
-        "model": "muse-video", "messages": [{"role": "user", "content": "x"}]}).status_code == 400
+        "model": "muse-video", "messages": [{"role": "user", "content": "x"}]}).status_code == 404
     task = client.post("/v1/videos", headers=a, json={"prompt": "a wave"}).json()
     client.get(f"/v1/videos/{task['id']}", headers=a)  # poll: not counted
     client.get("/v1/models", headers=auth)

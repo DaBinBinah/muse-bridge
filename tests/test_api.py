@@ -58,7 +58,15 @@ def test_chat_stream(client, auth):
 def test_chat_wrong_model_kind(client, auth):
     r = client.post("/v1/chat/completions", headers=auth, json={
         "model": "muse-video", "messages": [{"role": "user", "content": "x"}]})
-    assert r.status_code == 400
+    assert r.status_code == 404
+    assert r.json()["error"]["code"] == "model_not_found"
+
+
+def test_chat_unknown_model_falls_back(client, auth):
+    r = client.post("/v1/chat/completions", headers=auth, json={
+        "model": "totally-unknown-model", "messages": [{"role": "user", "content": "x"}]})
+    assert r.status_code == 200
+    assert r.json()["model"] == "totally-unknown-model"
 
 
 def test_image_url_and_media(client, auth):

@@ -39,6 +39,19 @@ class NotFound(Muse2APIError):
     code = "not_found"
 
 
+class ModelNotFound(Muse2APIError):
+    """A known model was requested through an endpoint of the wrong kind.
+
+    404 (OpenAI's ``model_not_found`` convention, also Magpie's "model
+    rejection" signal) rather than 400: the account is healthy, the model
+    just cannot serve this request.
+    """
+
+    status_code = 404
+    error_type = "invalid_request_error"
+    code = "model_not_found"
+
+
 class FeatureNotImplemented(Muse2APIError):
     """Reserved endpoint or driver capability that has not been built yet."""
 
