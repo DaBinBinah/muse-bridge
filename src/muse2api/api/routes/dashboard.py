@@ -17,7 +17,6 @@ router = APIRouter(tags=["dashboard"])
 _PAGE = Path(__file__).resolve().parents[2] / "web" / "dashboard.html"
 
 
-@lru_cache(maxsize=1)
 def _html() -> str:
     return _PAGE.read_text(encoding="utf-8")
 

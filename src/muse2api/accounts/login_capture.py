@@ -25,7 +25,7 @@ from typing import Any
 from ..config import Settings
 from ..drivers.browser.cdp import CDPError, CDPSession
 from ..drivers.browser.chromium import ChromiumProcess, find_chromium
-from ..upstream.muse import SESSION_COOKIES, SITE
+from ..upstream.muse import NEW_THREAD_URL, SESSION_COOKIES, SITE
 from .model import Account, AccountStatus
 
 log = logging.getLogger(__name__)
@@ -94,6 +94,7 @@ class LoginCaptureManager:
         self._state: CaptureState | None = None
         self._task: asyncio.Task | None = None
         self._lock = asyncio.Lock()
+        self._windows: dict[str, ChromiumProcess] = {}
 
     @property
     def current(self) -> CaptureState | None:
@@ -123,6 +124,50 @@ class LoginCaptureManager:
                 await asyncio.gather(self._task, return_exceptions=True)
         return state
 
+    async def open_account(self, account: Account) -> dict[str, Any]:
+        """A visible Chromium window signed in as ``account``, to see muse.ai the way
+        that account does (e.g. its "Muse is disconnected" page). The user closes it.
+
+        One window per account: opening again replaces the previous one.
+        """
+        from ..drivers.browser.driver import BrowserDriver  # import cycle via accounts
+
+        if old := self._windows.pop(account.id, None):
+            await old.stop()
+        chromium = ChromiumProcess(
+            find_chromium(self._settings.chromium_path), _free_port(),
+            self._settings.data_dir / "login-profiles" / f"open_{account.id}",
+            headless=False, proxy=self._settings.browser_proxy,
+        )
+        browser = await CDPSession.connect(await chromium.start())
+        try:
+            targets = (await browser.send("Target.getTargets"))["targetInfos"]
+            target_id = next(t["targetId"] for t in targets if t["type"] == "page")
+            page = await CDPSession.connect(
+                f"ws://127.0.0.1:{chromium.port}/devtools/page/{target_id}")
+            try:
+                await page.send("Network.enable")
+                await BrowserDriver._set_cookies(page, account)
+                await page.send("Page.navigate", {"url": NEW_THREAD_URL})
+            finally:
+                await page.close()
+        except BaseException:
+            await chromium.stop()
+            raise
+        finally:
+            await browser.close()
+        self._windows[account.id] = chromium
+        return {"ok": True}
+
+    async def close_windows(self) -> None:
+        """Close every window ``open_account`` opened (bridge shutdown)."""
+        windows, self._windows = list(self._windows.values()), {}
+        for chromium in windows:
+            try:
+                await chromium.stop()
+            except Exception:  # noqa: BLE001
+                pass
+
     # ------------------------------------------------------------- internals
 
     async def _run(self, state: CaptureState, timeout: float) -> None:
@@ -143,6 +188,7 @@ class LoginCaptureManager:
             )
             await page.send("Network.enable")
             deadline = time.time() + timeout
+            captured = False  # status flips to "captured" only once the account is saved
             while state.status == "waiting" and time.time() < deadline:
                 await asyncio.sleep(POLL_INTERVAL)
                 try:
@@ -155,7 +201,7 @@ class LoginCaptureManager:
                 except CDPError:
                     # The tab/window was closed. Complete from what we last saw.
                     if not state.missing:
-                        state.status = "captured"
+                        captured = True
                     else:
                         state.status = "cancelled"
                         state.error = "browser window was closed before login completed"
@@ -164,11 +210,12 @@ class LoginCaptureManager:
                 state.expires = expires
                 state.missing = [n for n in SESSION_COOKIES if not cookies.get(n)]
                 if not state.missing:
-                    state.status = "captured"
+                    captured = True
                     break
-            if state.status == "captured":
+            if captured:
                 state.account, state.created_account = await self._save(
                     state.label, state.cookies, state.expires)
+                state.status = "captured"
             elif state.status == "waiting":
                 state.status = "timeout"
                 state.error = f"no login within {int(timeout)} seconds"

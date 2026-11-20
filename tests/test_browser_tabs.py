@@ -217,3 +217,73 @@ async def test_quota_hint_only_counts_in_the_finished_reply(driver):
              "lastText": "You've reached your usage limit. Try again later.", "generating": False}
     with pytest.raises(UpstreamQuotaError, match="usage limit"):
         await driver._state(_media_tab([quota]))
+
+
+
+class _PageSession(_FakeSession):
+    """Serves ``pages`` in order (the last one repeats); ``click`` answers ACCEPT_DISCLOSURE."""
+
+    def __init__(self, *pages: dict, click: bool = False) -> None:
+        self.pages, self.click, self.navigations, self.clicks = list(pages), click, 0, 0
+
+    async def send(self, method, params=None, timeout=30.0):
+        self.navigations += method == "Page.navigate"
+        return {}
+
+    async def evaluate(self, expression, **kw):
+        from muse2api.drivers.browser import dom
+        if expression == dom.ACCEPT_DISCLOSURE:
+            self.clicks += 1
+            return self.click
+        return self.pages[0] if len(self.pages) == 1 else self.pages.pop(0)
+
+
+ONBOARDING = {"ready": False, "path": "/access/disclosure", "head": "A few things to know"}
+DISCONNECTED = {"ready": False, "path": "/thread/new", "head": "Muse is disconnected | Submit a ticket"}
+
+
+@pytest.mark.parametrize("session, reason", [
+    (lambda: _PageSession(DISCONNECTED), "disconnected"),
+    (lambda: _PageSession(ONBOARDING, click=False), "onboarding"),
+])
+async def test_dead_end_pages_fail_fast_as_auth_errors(driver, session, reason):
+    from muse2api.errors import UpstreamAuthError
+
+    driver.ONBOARDING_GRACE = 0.3
+    tab = _Tab("a0", "ctx", "t", session())
+    with pytest.raises(UpstreamAuthError, match=reason):
+        await asyncio.wait_for(driver._new_thread(tab), 2)  # not the 45s page timeout
+
+
+async def test_onboarding_is_accepted_once_then_a_new_thread_opens(driver):
+    s = _PageSession(ONBOARDING, {"ready": False, "path": "/"},
+                     {"ready": True, "path": "/thread/new", "head": "Muse | Connected"}, click=True)
+    await asyncio.wait_for(driver._new_thread(_Tab("a0", "ctx", "t", s)), 3)
+    assert s.clicks == 1 and s.navigations == 2  # initial load + back to /thread/new
+
+
+async def test_a_blocked_account_flashing_ready_is_not_taken_for_a_chat(driver):
+    """Measured on a disconnected account: ready for ~0.4s, then the block screen."""
+    from muse2api.errors import UpstreamAuthError
+
+    flash = {"ready": True, "path": "/thread/new", "head": "New side chat | Message"}
+    s = _PageSession(flash, flash, {"ready": False, "path": "/thread/new", "head": ""}, DISCONNECTED)
+    with pytest.raises(UpstreamAuthError, match="disconnected"):
+        await asyncio.wait_for(driver._new_thread(_Tab("a0", "ctx", "t", s)), 3)
+
+
+def test_media_grace():
+    g = BrowserDriver._media_grace
+    assert g("bi git ekran goruntusu al ctnews'in", "") == BrowserDriver.CHAT_TASK_GRACE
+    assert g("take a screenshot of example.com", "") == BrowserDriver.CHAT_TASK_GRACE
+    assert g("selam", "here is the image you asked for") == BrowserDriver.CHAT_IMAGE_GRACE
+    assert g("selam", "Selam!") == 0.0
+
+
+def test_attachment_is_swapped_for_the_full_size_browser_screenshot():
+    thumb = {"src": "blob:thumb", "w": 498, "h": 259}
+    full = {"src": "blob:full", "w": 1919, "h": 998}
+    other = {"src": "blob:square", "w": 1024, "h": 1024}
+    assert BrowserDriver._full_size(thumb, [full, other]) == "blob:full"
+    assert BrowserDriver._full_size(thumb, [other]) == "blob:thumb"  # aspect differs
+    assert BrowserDriver._full_size(thumb, []) == "blob:thumb"

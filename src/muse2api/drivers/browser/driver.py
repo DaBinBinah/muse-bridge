@@ -90,7 +90,7 @@ class _Tab:
 class BrowserDriver(MuseDriver):
     name = "browser"
     capabilities = DriverCapabilities(
-        chat=True, chat_images=True, image=True, image_edit=True, video=True, renew_session=True
+        chat=True, chat_images=True, image=True, image_edit=True, video=True, renew_session=True, quota=True
     )
 
     def __init__(self, settings: Settings, media: MediaStore | None = None) -> None:
@@ -352,18 +352,57 @@ class BrowserDriver(MuseDriver):
             return False
         return (state.get("agentCount") or 0) < HOT_BUBBLE_LIMIT
 
+    READY_SETTLE = 3.0
+    """Seconds a page without the "Connected" badge must stay ready to count as ready."""
+    ONBOARDING_GRACE = 10.0
+    """Seconds to wait for the disclosure button, and for muse.ai to leave the page after it."""
+
     async def _new_thread(self, tab: _Tab) -> None:
         self._forget(tab)
         await tab.session.send("Page.navigate", {"url": muse.NEW_THREAD_URL})
         deadline = time.monotonic() + self.settings.page_ready_timeout
         state: dict = {}
+        onboarding_at, accepted_at, clicked = 0.0, 0.0, False
+        ready_since = 0.0
         while time.monotonic() < deadline:
             await asyncio.sleep(0.25)
             # A busy page can leave Runtime.evaluate unanswered while it loads; poll again.
             with contextlib.suppress(CDPError, TimeoutError):
                 state = await tab.session.evaluate(dom.PAGE_STATE, timeout=5.0) or {}
-                if state.get("ready"):
+                # A blocked account shows the chat for ~0.4s before "Muse is disconnected"
+                # replaces it. Trust the "Connected" badge, or a page that stays ready.
+                if not state.get("ready"):
+                    ready_since = 0.0
+                elif dom.CONNECTED_HINT in (state.get("head") or ""):
                     return
+                else:
+                    ready_since = ready_since or time.monotonic()
+                    if time.monotonic() - ready_since >= self.READY_SETTLE:
+                        return
+            # Fail at once instead of waiting out the timeout on a page that never
+            # becomes a chat; the auth error takes the account out of rotation.
+            if dom.DISCONNECTED_HINT in (state.get("head") or ""):
+                raise UpstreamAuthError("muse.ai disconnected this account; submit a ticket to reconnect")
+            if (state.get("path") or "").startswith(dom.ONBOARDING_PATH):
+                # First run: accept the disclosure once, then give muse.ai a few
+                # seconds to leave the page before calling the account stuck.
+                # The button renders a moment after the path changes, so keep trying.
+                onboarding_at = onboarding_at or time.monotonic()
+                if not clicked:
+                    if await tab.session.evaluate(dom.ACCEPT_DISCLOSURE):
+                        log.info("accepted muse.ai onboarding disclosure")
+                        accepted_at, clicked = time.monotonic(), True
+                        deadline = accepted_at + self.settings.page_ready_timeout
+                    elif time.monotonic() - onboarding_at > self.ONBOARDING_GRACE:
+                        raise UpstreamAuthError("account has not finished muse.ai onboarding")
+                elif time.monotonic() - accepted_at > self.ONBOARDING_GRACE:
+                    raise UpstreamAuthError("muse.ai onboarding did not complete")
+                continue
+            if accepted_at and state.get("path") != "/thread/new":
+                # Onboarding lands on its own page; go back to a fresh thread.
+                accepted_at = 0.0
+                await tab.session.send("Page.navigate", {"url": muse.NEW_THREAD_URL})
+                state = {}
         head = (state.get("head") or "").lower()
         if any(h in head for h in dom.LOGIN_HINTS):
             raise UpstreamAuthError("muse.ai redirected to login; cookies are no longer valid")
@@ -548,7 +587,7 @@ class BrowserDriver(MuseDriver):
             # The text has settled; images the reply renders (muse generates them
             # inline when asked to draw) are collected and appended as links.
             if finished:
-                tail = await self._collect_chat_images(tab, base, self._wants_media(req.prompt, emitted))
+                tail = await self._collect_chat_images(tab, base, self._media_grace(req.prompt, emitted))
                 if tail:
                     yield tail
         except CDPError as exc:
@@ -588,11 +627,30 @@ class BrowserDriver(MuseDriver):
     # (often 10-30s later), so when the conversation plausibly asked for media we
     # keep polling the page this long before giving up.
     CHAT_IMAGE_GRACE = 25.0
-    MEDIA_HINT_RE = re.compile(r"画|绘|图|照片|photo|picture|image|draw|paint|generat", re.I)
+    # A request the user made for media can run as a muse.ai background task (a browser
+    # screenshot arrived ~30-80s after the "on it" reply), so it gets a longer wait.
+    CHAT_TASK_GRACE = 90.0
+    MEDIA_HINT_RE = re.compile(
+        r"画|绘|图|照片|photo|picture|image|draw|paint|generat|screenshot"
+        r"|ekran ?g[öo]r[üu]nt[üu]s|resim|foto[gğ]?|g[öo]rsel|[çc]iz", re.I)
 
     @classmethod
-    def _wants_media(cls, prompt: str, reply: str) -> bool:
-        return bool(cls.MEDIA_HINT_RE.search(prompt or "") or cls.MEDIA_HINT_RE.search(reply or ""))
+    def _media_grace(cls, prompt: str, reply: str) -> float:
+        """Seconds to keep polling for media after the text settles; 0 for none."""
+        if cls.MEDIA_HINT_RE.search(prompt or ""):
+            return cls.CHAT_TASK_GRACE
+        return cls.CHAT_IMAGE_GRACE if cls.MEDIA_HINT_RE.search(reply or "") else 0.0
+
+    @staticmethod
+    def _full_size(att: dict, snaps: list[dict]) -> str:
+        """The full-size browser screenshot an attachment was scaled down from, if this
+        reply took one (same aspect ratio, larger); else the attachment itself."""
+        w, h = att.get("w") or 0, att.get("h") or 0
+        for s in reversed(snaps):  # the latest screenshot is the likeliest source
+            sw, sh = s.get("w") or 0, s.get("h") or 0
+            if h and sh and sw > w and abs(sw / sh - w / h) < 0.02 * (w / h):
+                return s["src"]
+        return att.get("src") or ""
 
     @classmethod
     def _image_candidates(cls, links: list[str], base_srcs: set[str]) -> list[str]:
@@ -639,13 +697,13 @@ class BrowserDriver(MuseDriver):
             return None
         return base64.b64decode(res["b64"]), res["mime"]
 
-    async def _collect_chat_images(self, tab: _Tab, base: dict, want_media: bool) -> str:
+    async def _collect_chat_images(self, tab: _Tab, base: dict, grace: float) -> str:
         """Markdown links for images the reply added; '' when none.
 
         muse.ai renders generated images as page-level attachments next to (not
         inside) the agent text bubble, so the whole page is scanned and the
         attachments already present at request start (``base``) are excluded.
-        ``want_media`` keeps polling after the text settles — the attachment
+        ``grace`` (seconds, 0 for none) keeps polling after the text settles — the attachment
         element usually appears several seconds later.
         """
         if not self._media:
@@ -653,9 +711,11 @@ class BrowserDriver(MuseDriver):
         base_srcs = {a["src"] for a in (base.get("attachments") or []) if a.get("src")}
         base_pending = sum(1 for a in (base.get("attachments") or [])
                            if a.get("kind") == "image" and (not a.get("src") or not a.get("w")))
+        base_snaps = {s.get("src") for s in (base.get("snapshots") or [])}
 
         async def probe() -> tuple[list[str], int]:
             st = await tab.session.evaluate(dom.CHAT_STATE) or {}
+            snaps = [s for s in st.get("snapshots") or [] if s.get("src") not in base_snaps]
             links: list[str] = []
             pending = 0
             for a in st.get("attachments", []):
@@ -665,6 +725,7 @@ class BrowserDriver(MuseDriver):
                 if src and src in base_srcs:
                     continue
                 if src and a.get("w"):
+                    src = self._full_size(a, snaps)
                     if src not in links:
                         links.append(src)
                 else:
@@ -675,11 +736,13 @@ class BrowserDriver(MuseDriver):
             bubble = await tab.session.evaluate(dom.LAST_BUBBLE_MEDIA) or {}
             return self._image_candidates(bubble.get("links", []), base_srcs), pending
 
+        want_media = grace > 0
         links, pending = await probe()
         if not links and (pending > base_pending or want_media):
-            deadline = time.monotonic() + self.CHAT_IMAGE_GRACE
+            grace = grace or self.CHAT_IMAGE_GRACE
+            deadline = time.monotonic() + grace
             if want_media and pending <= base_pending:
-                log.info("reply may contain media; polling up to %.0fs for the attachment", self.CHAT_IMAGE_GRACE)
+                log.info("reply may contain media; polling up to %.0fs for the attachment", grace)
             while time.monotonic() < deadline:
                 await asyncio.sleep(1.0)
                 links, pending = await probe()
@@ -694,7 +757,7 @@ class BrowserDriver(MuseDriver):
             url = self._media_url(name)
             # Markdown for GUI clients plus a plain line, because terminals render
             # the image alt text only and would hide the URL itself.
-            parts.append(f"![生成的图片]({url})\n图片链接：{url}")
+            parts.append(f"![image]({url})\nImage link: {url}")
             log.info("chat reply image saved as %s (%s, %d bytes)", name, got[1], len(got[0]))
         return "\n\n" + "\n\n".join(parts) if parts else ""
 
@@ -856,3 +919,31 @@ class BrowserDriver(MuseDriver):
         for tab in idle:
             await self._close_tab(tab)
         return info
+
+    # ------------------------------------------------------------ quota
+    async def quota(self, account: Account) -> dict[str, Any]:
+        tab = await self._checkout(account)
+        try:
+            if not await self._on_thread(tab):
+                await self._new_thread(tab)
+            res = await tab.session.evaluate(dom.QUOTA_LOOKUP, await_promise=True, timeout=15.0) or {}
+            if not res.get("ok"):
+                raise UpstreamError(res.get("error") or "quota lookup failed")
+            return {
+                "plan": res.get("plan", "Free plan"),
+                "weekly_reset": res.get("weekly_reset"),
+                "weekly_used_percent": res.get("weekly_used_percent", 0),
+                "additional_left": res.get("additional_left"),
+                "additional_used_percent": res.get("additional_used_percent", 0),
+                "additional_expires": res.get("additional_expires"),
+                "bars": res.get("bars", []),
+            }
+        except (CDPError, TimeoutError) as exc:
+            raise UpstreamError(f"quota lookup failed: {exc}") from exc
+        finally:
+            # A tab opened just for this lookup holds no conversation; close it so a
+            # sweep over every account does not leave a window open per account.
+            if tab.has_state:
+                await self._checkin(tab)
+            else:
+                await self._close_tab(tab)
